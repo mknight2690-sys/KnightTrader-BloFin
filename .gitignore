@@ -1,45 +1,30 @@
-# Dependencies
-node_modules/
-
-# Build outputs
-dist/
-out/
-build/
-*.exe
-*.dmg
-*.msi
-*.AppxBundle
-*.Appx
-*.asar
-
-# Electron/CI artifacts
-release/
-latest.yml
-latest-mac.yml
-
-# Local runtime/state
-data/
-*.log
-*.pid
-
-# Env/secrets
+# Environment
 .env
-.env.*
-!.env.example
+*.env
 
 # Python
-.venv/
 __pycache__/
 *.pyc
-*.egg-info/
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Testing
 .pytest_cache/
-.coverage/
+.coverage
+*.egg-info/
+dist/
+build/
 
-# OS junk
-Thumbs.db
+# Database and models (generated at runtime)
+*.db
+*.sqlite
+*.sqlite3
+models/*.joblib
+models/*.pt
+models/*.pth
+
+# OS
 .DS_Store
-desktop.ini
-
-# IDE
-.vscode/
-.idea/
+Thumbs.db

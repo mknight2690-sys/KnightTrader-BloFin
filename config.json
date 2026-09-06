@@ -1,0 +1,22 @@
+{
+    "api": {
+        "is_demo": true,
+        "base_url": "https://demo-trading-openapi.blofin.com",
+        "ws_url": "wss://demo-trading-openapi.blofin.com/ws/public"
+    },
+    "trading": {
+        "symbol": "BTC-USDT",
+        "max_drawdown_limit": 0.12,
+        "obi_threshold": 0.10,
+        "confidence_threshold": 0.35,
+        "risk_multiplier": 1.0
+    },
+    "models": {
+        "gmm_components": 3,
+        "rf_estimators": 50,
+        "rf_max_depth": 5,
+        "transformer_d_model": 64,
+        "transformer_nhead": 4,
+        "transformer_layers": 2
+    }
+}
