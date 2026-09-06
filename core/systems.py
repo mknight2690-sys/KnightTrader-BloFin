@@ -90,8 +90,6 @@ class OrderBookImbalanceFilter:
                     logging.debug(f"[SYSTEM 6] OBI: {self.latest_obi:.6f} (Bid: {bid_vol:.2f}, Ask: {ask_vol:.2f})")
         except Exception as e:
             logging.warning(f"[SYSTEM 6] OBI calculation failed: {e}")
-        except Exception as e:
-            logging.warning(f"[SYSTEM 6] OBI calculation failed: {e}")
 
     def get_obi_gate_status(self, threshold: float = 0.10) -> bool:
         """Check if OBI meets minimum threshold for trading"""
