@@ -12,6 +12,64 @@
 </head>
 <body>
 
+  <!-- Membership lock overlay -->
+  <div id="subscription-lock-overlay" class="login-overlay hidden">
+    <div class="login-card">
+      <div class="login-logo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.5C16.5 22.15 20 17.25 20 12V6l-8-4z"/><path d="M9 12l2 2 4-4" stroke="#0b0d10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div>
+          <div style="font-weight:700">Membership required</div>
+          <div style="font-size:11px;color:var(--text3)">Renew to resume Hermes trading</div>
+        </div>
+      </div>
+      <div class="login-body">
+        <div id="lock-message" class="login-error" role="alert" aria-live="polite"></div>
+        <div class="form-actions" style="padding:0">
+          <button type="button" id="btn-lock-renew" class="btn-primary">Renew membership — $47/mo</button>
+          <button type="button" id="btn-lock-recheck" class="btn-secondary">Recheck payment status</button>
+          <button type="button" id="btn-lock-signout" class="btn-secondary">Sign out</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Login overlay -->
+  <div id="login-overlay" class="login-overlay">
+    <div class="login-card">
+      <div class="login-logo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.5C16.5 22.15 20 17.25 20 12V6l-8-4z"/><path d="M9 12l2 2 4-4" stroke="#0b0d10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div>
+          <div style="font-weight:700">KnightTrader BloFin</div>
+          <div style="font-size:11px;color:var(--text3)">Membership login</div>
+        </div>
+      </div>
+      <form id="form-login" class="login-form" novalidate>
+        <label class="field">
+          <span>Email</span>
+          <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email" required />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" required />
+        </label>
+        <div id="login-error" class="login-error" role="alert" aria-live="polite"></div>
+        <button type="submit" id="btn-login" class="btn-primary login-submit">Sign in</button>
+        <button type="button" id="btn-forgot" class="link-btn login-forgot">Forgot password?</button>
+      </form>
+      <form id="form-forgot" class="login-form hidden" novalidate>
+        <label class="field">
+          <span>Account email</span>
+          <input type="email" id="forgot-email" placeholder="you@example.com" autocomplete="email" required />
+        </label>
+        <div id="forgot-error" class="login-error" role="alert" aria-live="polite"></div>
+        <div id="forgot-success" class="login-success" role="status" aria-live="polite"></div>
+        <button type="submit" id="btn-forgot-send" class="btn-primary login-submit">Send reset link</button>
+        <button type="button" id="btn-forgot-back" class="link-btn login-forgot">Back to sign in</button>
+      </form>
+      <div class="login-footer">Requires active $47/mo membership.</div>
+    </div>
+  </div>
+
   <!-- Custom Titlebar -->
   <div id="titlebar">
     <div id="titlebar-drag">
@@ -55,7 +113,11 @@
       </div>
 
       <ul id="nav-list">
-        <li class="nav-item active" data-tab="setup">
+        <li class="nav-item active" data-tab="howto">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>How-To</span>
+        </li>
+        <li class="nav-item" data-tab="setup">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
           <span>Setup</span>
         </li>
@@ -74,13 +136,13 @@
           <span id="log-badge" class="badge hidden">0</span>
         </li>
         <li class="nav-item" data-tab="settings">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           <span>Settings</span>
         </li>
       </ul>
 
       <div id="sidebar-footer">
-        <div class="version-tag" id="sidebar-version">v1.0.0</div>
+        <div class="version-tag" id="sidebar-version">v1.1.15</div>
         <button id="btn-open-blofin" class="link-btn">Blofin ↗</button>
       </div>
     </nav>
@@ -104,30 +166,470 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg>
           <span>Menu</span>
         </button>
-        <div id="popup-menu" class="popup-menu hidden" role="menu">
-          <button id="btn-check-for-updates" class="popup-menu-item" role="menuitem">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            <span>Check for updates</span>
-          </button>
-          <div class="popup-separator"></div>
-          <div class="popup-menu-item popup-menu-item-disabled" aria-disabled="true">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-            <span>KnightTrader BloFin</span>
-          </div>
-          <div class="popup-menu-item popup-menu-item-disabled" aria-disabled="true">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-            <span>v<span id="popup-app-version">1.0.0</span></span>
-          </div>
-          <div class="popup-menu-item popup-menu-item-disabled" aria-disabled="true">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-            <span id="popup-update-status">Updates are automatic</span>
-          </div>
+        <div id="popup-menu" class="popup-menu hidden" role="menu" aria-label="App menu">
+          <!-- Populated by setPopupOpen() in renderer/app.js -->
         </div>
       </div>
       <!-- ── End popup menu button ─────────────────────────────── -->
 
+      <!-- ── HOW-TO TAB ─────────────────────────────────────────── -->
+      <section id="tab-howto" class="tab-panel active">
+        <div class="panel-header">
+          <h1>How-To</h1>
+          <p class="panel-sub">Do these steps in order. This guide is written for someone who has never done this before.</p>
+        </div>
+        <blockquote class="hero-quote">
+          <p>“Take it slow, follow the How-To tab, and you’ll be fine. Every button clicked once in the first go around.</p>
+          <p>Then when you go back into the app, just click on the Hermes tab, scroll down when it loads, and launch the dashboard and gateway, assuming they don’t do it automatically for you. Then click on ‘Open in browser’ to monitor chats and make sure Hermes is completing cycles, and go back to the app and click on Trading, which is modeled after the BH dashboard.</p>
+          <p>That’s it.”</p>
+          <footer>—Matthew Knight, Founder, KnightTrader</footer>
+        </blockquote>
+        <div class="howto-wrapper">
+
+          <div class="preflight">
+            <div class="preflight-title">Before you start — do not skip this</div>
+            <ol class="howto-list howto-list--tight">
+              <li>You need a <strong>Windows 11</strong> PC or a <strong>Mac</strong>.</li>
+              <li>You need a <strong>debit card</strong> and the ability to open your bank app or use a chip reader.</li>
+              <li>You need an <strong>email address and password</strong> you can remember.</li>
+              <li>You need about <strong>30–60 minutes</strong> of uninterrupted time.</li>
+              <li>Turn off notifications or find a quiet screen so you can read each step.</li>
+            </ol>
+            <div class="preflight-warn">If something fails, stop and read the exact message. Do not keep clicking randomly. Most failures are one missed field or one wrong network.</div>
+          </div>
+
+          <div class="steps-flow">
+
+            <div class="step-card">
+              <div class="step-num">1</div>
+              <div class="step-body">
+                <div class="step-title">Join membership and save your login</div>
+                <div class="step-desc">You need an active membership to download and use the app. Use an email you can access and a password you can remember. You will use the same email and password in the app.</div>
+                <div class="step-desc"><strong>Click by click:</strong></div>
+                <ol class="howto-list">
+                  <li>On this site, click <strong>Join membership — $47/month</strong>.</li>
+                  <li>Enter your <strong>email</strong> and <strong>password</strong>.</li>
+                  <li>Complete Stripe checkout.</li>
+                  <li>Write your email and password down in a safe place on your computer or phone.</li>
+                  <li>Come back to this site, scroll to <strong>Login to download</strong>, enter the same email and password, then download.</li>
+                </ol>
+                <div class="step-desc">Do not forget this password. You will need it every time you reinstall or sign into the app.</div>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">2</div>
+              <div class="step-body">
+                <div class="step-title">Install the app</div>
+                <div class="step-desc">Install like any normal program. There is nothing technical here.</div>
+                <div class="step-desc"><strong>Windows:</strong></div>
+                <ol class="howto-list">
+                  <li>Open the downloaded installer.</li>
+                  <li>Follow the prompts.</li>
+                  <li>When it finishes, find <strong>KnightTrader BloFin</strong> in your Start menu and open it.</li>
+                </ol>
+                <div class="step-desc"><strong>Mac:</strong></div>
+                <ol class="howto-list">
+                  <li>Open the downloaded <code>.dmg</code>.</li>
+                  <li>Drag <strong>KnightTrader BloFin</strong> into your <strong>Applications</strong> folder.</li>
+                  <li>Open it from <strong>Applications</strong>.</li>
+                  <li>If macOS warns you, open <strong>System Settings → Privacy & Security</strong> and allow it.</li>
+                </ol>
+                <div class="step-desc">If the app opens, you are good. If it closes immediately, read the error text and fix the first item it mentions.</div>
+                <div class="step-desc"><strong>What success looks like:</strong></div>
+                <ol class="howto-list">
+                  <li>You see the KnightTrader login screen or the How-To tab.</li>
+                  <li>The app stays open. It does not close by itself.</li>
+                </ol>
+                <div class="step-desc">If it closes, take a screenshot of the error and fix that exact item before continuing.</div>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">3</div>
+              <div class="step-body">
+                <div class="step-title">Sign in to the app</div>
+                <div class="step-desc">Use the same email and password you used on the website.</div>
+                <ol class="howto-list">
+                  <li>Type your <strong>email</strong>.</li>
+                  <li>Type your <strong>password</strong>.</li>
+                  <li>Click <strong>Sign in</strong>.</li>
+                  <li>If you see an error, check caps lock and retype both fields.</li>
+                  <li>If it says membership is not active, renew in the app <strong>Settings</strong> tab.</li>
+                </ol>
+                <div class="step-desc">Do not guess passwords. If you forget it, click <strong>Forgot password?</strong>.</div>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">4</div>
+              <div class="step-body">
+                <div class="step-title">Keep this computer awake</div>
+                <div class="step-desc">If the computer sleeps, Hermes stops. Change these settings now so they do not surprise you later.</div>
+                <div class="step-desc"><strong>Windows 11 — exact clicks:</strong></div>
+                <ol class="howto-list">
+                  <li>Press the <strong>Windows key</strong>, type <strong>Settings</strong>, and open it.</li>
+                  <li>Click <strong>System</strong>.</li>
+                  <li>Click <strong>Power & battery</strong>.</li>
+                  <li>Click <strong>Screen and sleep</strong>.</li>
+                  <li>Set <strong>When plugged in, turn off my screen after</strong> to <strong>Never</strong>.</li>
+                  <li>Set <strong>When plugged in, put my device to sleep after</strong> to <strong>Never</strong>.</li>
+                  <li>If you see battery options, set them to <strong>Never</strong> or a long timeout.</li>
+                  <li>Close Settings.</li>
+                </ol>
+                <div class="step-desc"><strong>Mac — exact clicks:</strong></div>
+                <ol class="howto-list">
+                  <li>Click the <strong>Apple menu</strong> → <strong>System Settings</strong>.</li>
+                  <li>Click <strong>Displays</strong>.</li>
+                  <li>Click <strong>Advanced</strong> or <strong>Options</strong>.</li>
+                  <li>Set <strong>Turn display off</strong> to <strong>Never</strong> or a long timeout.</li>
+                  <li>Click <strong>Battery</strong>.</li>
+                  <li>Click <strong>Options</strong> or <strong>Power Adapter</strong>.</li>
+                  <li>Set display and sleep timers to <strong>Never</strong> while plugged in.</li>
+                  <li>Close System Settings.</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">5</div>
+              <div class="step-body">
+                <div class="step-title">Install ProtonVPN and reach an allowed country</div>
+                <div class="step-desc">Use this only if Blofin is blocked in your country. Do not skip the wait times.</div>
+                <div class="step-desc"><strong>Exact routine:</strong></div>
+                <ol class="howto-list">
+                  <li>Go to <strong>protonvpn.com</strong>.</li>
+                  <li>Click <strong>Get Proton VPN</strong> or <strong>Download</strong>.</li>
+                  <li>Install the app.</li>
+                  <li>Create a free Proton account.</li>
+                  <li>Open ProtonVPN and click <strong>Connect</strong>.</li>
+                  <li>If it connects to the <strong>United States</strong>, leave it connected for now.</li>
+                  <li>Open the ProtonVPN app home screen.</li>
+                  <li>Click <strong>Change server</strong>.</li>
+                  <li>If the new country is <strong>not</strong> Romania, Poland, Netherlands, or Mexico, wait <strong>1 minute 40 seconds</strong>.</li>
+                  <li>Click <strong>Change server</strong> again.</li>
+                  <li>If it is still not allowed, wait <strong>1 minute 50 seconds</strong>.</li>
+                  <li>Click <strong>Change server</strong> a third time.</li>
+                  <li>If you are still not in an allowed country, click <strong>Disconnect</strong>, wait a moment, then click <strong>Connect</strong>.</li>
+                  <li>If it connects to the <strong>United States</strong> again, wait up to <strong>10 minutes</strong>, then start again from step 7.</li>
+                </ol>
+                <div class="step-desc">Allowed countries: <strong>Romania, Poland, Netherlands, Mexico</strong>. Not allowed: <strong>Singapore, United States, Canada</strong>.</div>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">6</div>
+              <div class="step-body">
+                <div class="step-title">Create your Nous Portal API key</div>
+                <div class="step-desc">Hermes needs this key to think and trade. After you sign up for Nous Portal, add at least <strong>$5 in credits</strong>. Then create the API key and paste it into the app.</div>
+                <div class="step-desc"><strong>Click by click:</strong></div>
+                <ol class="howto-list">
+                  <li>Open <strong>portal.nousresearch.com/manage-subscription</strong>.</li>
+                  <li>If you are not signed in, click <strong>Login</strong>.</li>
+                  <li>Open <strong>Plans</strong> if it is not already selected.</li>
+                  <li>Choose the <strong>Free $0</strong> plan.</li>
+                  <li>Click <strong>Subscribe</strong> if prompted.</li>
+                  <li>Wait until the plan shows as active.</li>
+                  <li>Open <strong>Account → API keys</strong> or the API keys section in the portal.</li>
+                  <li>Click <strong>Create new API key</strong>.</li>
+                  <li>Copy the key immediately.</li>
+                  <li>Paste it into the app <strong>Setup</strong> tab in <strong>AI Credentials → Portal API Key</strong>.</li>
+                </ol>
+                <div class="step-desc">After pasting, click <strong>Test AI Credentials</strong> in the app. If it says success, move on.</div>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">7</div>
+              <div class="step-body">
+                <div class="step-title">Create a Blofin account</div>
+                <div class="step-desc">This is the exchange where Hermes trades. Create the account first, before you buy crypto.</div>
+                <div class="step-desc"><strong>Click by click:</strong></div>
+                <ol class="howto-list">
+                  <li>Open <strong>blofin.com</strong>.</li>
+                  <li>Click <strong>Sign up</strong> or <strong>Get started</strong>.</li>
+                  <li>Enter your email and create a password.</li>
+                  <li>Verify your email if prompted.</li>
+                  <li>Enable security features such as two-factor authentication if prompted.</li>
+                </ol>
+                <div class="step-desc">Keep this tab open. You will need Blofin open again when you create API keys and deposit funds.</div>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">8</div>
+              <div class="step-body">
+                <div class="step-title">Create Blofin API keys</div>
+                <div class="step-desc">The app needs three values: API Key, Secret Key, and Passphrase. The file loader can also read them from a text file.</div>
+                <div class="step-desc"><strong>Click by click:</strong></div>
+                <ol class="howto-list">
+                  <li>In Blofin, open your account menu and go to <strong>API Management</strong> or <strong>API</strong>.</li>
+                  <li>Click <strong>Create API key</strong> or <strong>New API key</strong>.</li>
+                  <li>Name the key something simple like <strong>KT Hermes</strong>.</li>
+                  <li>Enable <strong>Compendium</strong> permission.</li>
+                  <li>Enable <strong>Trading</strong> permission.</li>
+                  <li>Enable <strong>Transfer</strong> permission only if you plan to move funds inside Blofin.</li>
+                  <li>Save the key.</li>
+                  <li>Copy the <strong>API Key</strong>.</li>
+                  <li>Copy the <strong>Secret Key</strong>.</li>
+                  <li>Copy the <strong>Passphrase</strong>.</li>
+                  <li>Open the KnightTrader app <strong>Setup</strong> tab.</li>
+                  <li>Paste the API Key into <strong>API Key</strong>.</li>
+                  <li>Paste the Secret Key into <strong>Secret Key</strong>.</li>
+                  <li>Paste the Passphrase into <strong>Passphrase</strong>.</li>
+                  <li>If you saved the keys into a text file instead, click <strong>Load from file…</strong> and choose that file.</li>
+                  <li>Click <strong>Test Blofin Credentials</strong>.</li>
+                  <li>Wait for a success message before continuing.</li>
+                </ol>
+                <div class="step-desc">If test fails: double-check the three values, then click test again. Do not move on until it succeeds.</div>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">9</div>
+              <div class="step-body">
+                <div class="step-title">Save credentials and write the compendium file</div>
+                <div class="step-desc">Saving writes the encrypted credentials locally. Writing the compendium creates the file Hermes reads.</div>
+                <ol class="howto-list">
+                  <li>In the app <strong>Setup</strong> tab, click <strong>Save & Write Compendium</strong>.</li>
+                  <li>Wait for the success message.</li>
+                  <li>If you see an error, read it, fix it, then save again.</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">10</div>
+              <div class="step-body">
+                <div class="step-title">Create a Coinbase account</div>
+                <div class="step-desc">You will use Coinbase to turn debit-card money into crypto.</div>
+                <div class="step-desc"><strong>Click by click:</strong></div>
+                <ol class="howto-list">
+                  <li>Open <strong>coinbase.com</strong> in a browser.</li>
+                  <li>Click <strong>Get started</strong>.</li>
+                  <li>Enter your <strong>email</strong>.</li>
+                  <li>Create a <strong>password</strong> you can remember.</li>
+                  <li>Click the verification link Coinbase sends to your email.</li>
+                  <li>Add your <strong>phone number</strong>.</li>
+                  <li>Enable <strong>two-factor authentication</strong>.</li>
+                  <li>Verify your identity with a government-issued ID.</li>
+                  <li>Wait for approval if Coinbase asks for manual review.</li>
+                </ol>
+                <div class="step-desc">Save your Coinbase email and password too.</div>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">11</div>
+              <div class="step-body">
+                <div class="step-title">Add your debit card to Coinbase</div>
+                <div class="step-desc">This is how you buy crypto with money from your bank.</div>
+                <ol class="howto-list">
+                  <li>Open Coinbase and sign in.</li>
+                  <li>Click your <strong>profile picture</strong> or <strong>Settings</strong>.</li>
+                  <li>Click <strong>Payment methods</strong>.</li>
+                  <li>Click <strong>Add a payment method</strong>.</li>
+                  <li>Choose <strong>Debit card</strong>.</li>
+                  <li>Enter the card number, expiration date, and CVV.</li>
+                  <li>Enter the billing address exactly as your bank has it.</li>
+                  <li>Confirm the card.</li>
+                  <li>If Coinbase shows a small authorization hold, approve it in your bank app if needed.</li>
+                </ol>
+                <div class="step-desc">If the card is declined, call your bank and allow online or card-not-present purchases.</div>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">12</div>
+              <div class="step-body">
+                <div class="step-title">Buy crypto with your debit card</div>
+                <div class="step-desc">Buy a small amount first. Card fees are higher than bank transfers.</div>
+                <ol class="howto-list">
+                  <li>In Coinbase, click <strong>Trade</strong> or go to <strong>Buy</strong>.</li>
+                  <li>Choose <strong>USDC</strong> for your first buy. It is designed to stay near one dollar.</li>
+                  <li>Enter a small amount.</li>
+                  <li>Click <strong>Preview buy</strong>.</li>
+                  <li>Review the fee.</li>
+                  <li>Confirm the purchase.</li>
+                  <li>Wait until it says <strong>Completed</strong>.</li>
+                </ol>
+                <div class="step-desc">If it fails, read the exact error. Usually it is the bank declining the card or card limits.</div>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">13</div>
+              <div class="step-body">
+                <div class="step-title">Get your Blofin deposit address</div>
+                <div class="step-desc">You will send crypto from Coinbase to this address. Do not skip this section.</div>
+                <div class="step-desc"><strong>Exact Blofin steps:</strong></div>
+                <ol class="howto-list">
+                  <li>Open <strong>blofin.com</strong> and sign in.</li>
+                  <li>Open <strong>Assets</strong> or <strong>Wallet</strong>.</li>
+                  <li>Click <strong>Deposit</strong>.</li>
+                  <li>Choose <strong>USDC</strong> if you bought USDC, or choose the exact coin you bought.</li>
+                  <li>Choose the <strong>network</strong> Coinbase will send on.</li>
+                  <li>Copy the <strong>deposit address</strong>.</li>
+                  <li>If Blofin asks for a <strong>memo</strong> or <strong>tag</strong>, copy that too.</li>
+                </ol>
+                <div class="step-desc">Write down: coin, network, address, and memo if required.</div>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">14</div>
+              <div class="step-body">
+                <div class="step-title">Send crypto from Coinbase to Blofin</div>
+                <div class="step-desc">This is the most common place people lose funds. Do not rush. Match every field exactly.</div>
+                <div class="step-desc"><strong>Exact Coinbase steps:</strong></div>
+                <ol class="howto-list">
+                  <li>In Coinbase, open <strong>Portfolio</strong> or <strong>Assets</strong>.</li>
+                  <li>Find the coin you bought.</li>
+                  <li>Click <strong>Send</strong>.</li>
+                  <li>Paste the <strong>Blofin deposit address</strong>.</li>
+                  <li>If Coinbase asks for <strong>destination tag</strong> or <strong>memo</strong>, paste the Blofin memo here.</li>
+                  <li>Choose the <strong>network</strong> that matches Blofin exactly.</li>
+                  <li>Review the network fee.</li>
+                  <li>Click <strong>Continue</strong> or <strong>Preview</strong>.</li>
+                  <li>Confirm the send.</li>
+                  <li>Wait for the transaction to confirm.</li>
+                </ol>
+                <div class="step-desc">If you send the wrong coin or wrong network, the funds may be lost. Double-check both before confirming.</div>
+                <div class="step-desc">After sending, open Blofin <strong>Assets</strong> and refresh until the deposit appears.</div>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">15</div>
+              <div class="step-body">
+                <div class="step-title">Add Defender exclusion on Windows before install</div>
+                <div class="step-desc">If you are on Windows, do this first. If you are on Mac, skip this step.</div>
+                <ol class="howto-list">
+                  <li>In the app, go to the <strong>Hermes</strong> tab.</li>
+                  <li>Find <strong>Step 0: Whitelist in Windows Defender</strong>.</li>
+                  <li>Click <strong>Add Defender Exclusion</strong>.</li>
+                  <li>If a UAC window pops up, click <strong>Yes</strong>.</li>
+                  <li>If auto-add fails, open <strong>Windows Security</strong> → <strong>Virus &amp; threat protection</strong> → <strong>Manage settings</strong> → <strong>Exclusions</strong> → <strong>Add folder</strong>.</li>
+                  <li>Add the folder shown in the app.</li>
+                </ol>
+                <div class="step-desc">If you skip this, Hermes install may fail.</div>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">16</div>
+              <div class="step-body">
+                <div class="step-title">Install Hermes</div>
+                <div class="step-desc">This installs Hermes inside this app only.</div>
+                <ol class="howto-list">
+                  <li>In the app <strong>Hermes</strong> tab, click <strong>Install Hermes</strong>.</li>
+                  <li>Wait for it to finish.</li>
+                  <li>If it says checking or installing, wait. Do not close the app.</li>
+                  <li>When it says installed, move to the next step.</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">17</div>
+              <div class="step-body">
+                <div class="step-title">Write compendium file again if needed</div>
+                <div class="step-desc">If you did not already click <strong>Save & Write Compendium</strong> in Setup, do it now.</div>
+                <ol class="howto-list">
+                  <li>Open the app <strong>Setup</strong> tab.</li>
+                  <li>Confirm your Blofin keys are saved.</li>
+                  <li>Click <strong>Save & Write Compendium</strong>.</li>
+                  <li>Confirm it says written.</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">18</div>
+              <div class="step-body">
+                <div class="step-title">Start Hermes dashboard and gateway</div>
+                <div class="step-desc">The dashboard shows what Hermes is doing. The gateway is required for cron jobs.</div>
+                <ol class="howto-list">
+                  <li>In the app <strong>Hermes</strong> tab, click <strong>Start Dashboard + Gateway</strong>.</li>
+                  <li>Wait for the status to change from <strong>Not running</strong>.</li>
+                  <li>Open <strong>Open in Browser</strong> if the embedded dashboard does not load.</li>
+                  <li>Confirm the dashboard opens at <strong>http://127.0.0.1:9119</strong>.</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">19</div>
+              <div class="step-body">
+                <div class="step-title">Auto-configure the trading cron</div>
+                <div class="step-desc">This tells Hermes to scan Blofin and trade every 10 minutes using market orders.</div>
+                <ol class="howto-list">
+                  <li>In the app <strong>Hermes</strong> tab, click <strong>Auto-Configure Cron</strong>.</li>
+                  <li>If it succeeds, the cron is active.</li>
+                  <li>If auto-config is unavailable, copy the prompt shown.</li>
+                  <li>Open the Hermes dashboard in your browser.</li>
+                  <li>Paste the prompt into the assistant/cron setup area.</li>
+                  <li>Save the cron.</li>
+                </ol>
+              </div>
+            </div>
+
+          <div class="step-card">
+            <div class="step-num">20</div>
+            <div class="step-body">
+              <div class="step-title">Confirm Hermes is actually trading</div>
+              <div class="step-desc">Do not assume it works. Verify these exact signals.</div>
+              <div class="step-desc"><strong>Checklist:</strong></div>
+              <ol class="howto-list">
+                <li>Keep the computer awake using step 4.</li>
+                <li>Open the app <strong>Trading</strong> tab.</li>
+                <li>Confirm <strong>Trading dashboard</strong> updates.</li>
+                <li>Confirm <strong>Last activity</strong> changes from <strong>Waiting for Hermes</strong>.</li>
+                <li>Confirm <strong>Recent Activity</strong> shows a Hermes cron tick.</li>
+                <li>If a trade happens, confirm <strong>Open positions</strong> appears.</li>
+                <li>Open the app <strong>Logs</strong> tab.</li>
+                <li>Look for successful cron activity.</li>
+                <li>If nothing happens after a few minutes, open the <strong>Hermes dashboard</strong> in browser and inspect manually.</li>
+              </ol>
+              <div class="step-desc">If the Trading tab webview is blank, use the Hermes dashboard in the browser. The browser dashboard is the source of truth.</div>
+              <div class="step-desc"><strong>What success looks like:</strong></div>
+              <ol class="howto-list">
+                <li>Trading dashboard says <strong>Live · SSE connected</strong> or <strong>Live</strong>.</li>
+                <li>Last activity says <strong>Signal connected</strong> or shows a recent timestamp.</li>
+                <li>Recent Activity shows a line that says something like <strong>cron tick succeeded</strong> or a trade message.</li>
+                <li>Open positions shows a position if a trade was placed.</li>
+                <li>Equity number changes over time.</li>
+              </ol>
+              <div class="step-desc">If any of these are missing, do not close the app. Open the Hermes dashboard in browser from the Hermes tab and check the assistant/cron logs there.</div>
+            </div>
+          </div>
+
+          <div class="step-card">
+            <div class="step-num">21</div>
+            <div class="step-body">
+              <div class="step-title">If something breaks, fix the first error message</div>
+              <div class="step-desc">Do not restart from the beginning. Read the exact message in Logs or on the button status, then fix that exact item.</div>
+              <div class="step-desc"><strong>Common fixes:</strong></div>
+              <ol class="howto-list">
+                <li><strong>Login fails:</strong> retype email and password. Check caps lock. Use <strong>Forgot password?</strong> if needed.</li>
+                <li><strong>Blofin test fails:</strong> double-check API Key, Secret Key, and Passphrase. Make sure you copied all three.</li>
+                <li><strong>Nous test fails:</strong> verify you selected a free model and pasted the exact Portal API key.</li>
+                <li><strong>VPN is U.S.:</strong> wait the full 1:40 or 1:50, then change server again. Do not rush.</li>
+                <li><strong>Dashboard blank:</strong> open <strong>Open in Browser</strong> from the Hermes tab. The browser dashboard is the source of truth.</li>
+                <li><strong>No trades yet:</strong> confirm Blofin has Futures/USDT-M balance, VPN is in an allowed country, and dashboard says gateway is running.</li>
+                <li><strong>Cron not firing:</strong> click <strong>Auto-Configure Cron</strong> again, or paste the prompt into the Hermes dashboard manually.</li>
+                <li><strong>Computer slept:</strong> reopen the app, confirm dashboard is still running, and check Logs.</li>
+              </ol>
+              <div class="step-desc">If you are stuck for more than 10 minutes, stop and review the exact error text. The fix is almost always one field, one network, or one missed confirmation.</div>
+            </div>
+          </div>
+
+          </div>
+        </div>
+      </section>
+
       <!-- ── SETUP TAB ─────────────────────────────────────── -->
-      <section id="tab-setup" class="tab-panel active">
+      <section id="tab-setup" class="tab-panel">
         <div class="panel-header">
           <h1>Credential Setup</h1>
           <p class="panel-sub">Keys stored encrypted on this PC — never sent anywhere except to Hermes locally.</p>
@@ -140,7 +642,7 @@
               <div class="card-icon ai-icon">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
               </div>
-              <div><div class="card-title">AI Credentials</div><div class="card-desc">Nous Portal — powers Hermes inference &amp; cron</div></div>
+              <div><div class="card-title">AI Credentials</div><div class="card-desc">Nous Portal — powers Hermes inference & cron</div></div>
               <a href="#" class="card-help" id="link-nous-portal">Get Portal key ↗</a>
             </div>
             <div class="field-group">
@@ -154,7 +656,7 @@
                   <input type="password" id="nous-api-key" placeholder="Paste key from portal.nousresearch.com" autocomplete="off" spellcheck="false"/>
                   <button type="button" class="toggle-vis" data-target="nous-api-key">👁</button>
                 </div>
-                <div class="field-hint">Sign in at Nous Portal → Account → API keys. Free tier works for cron trading.</div>
+                <div class="field-hint">Sign in at Nous Portal → Account → API keys. After signup, add at least $5 in credits, then create the key.</div>
               </div>
               <div class="field">
                 <label for="nous-model">Nous Model</label>
@@ -243,8 +745,8 @@
           <div class="form-actions">
             <div id="save-status" class="save-status"></div>
             <button type="submit" id="btn-save" class="btn-primary">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-              Save &amp; Write Compendium
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1 2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              Save & Write Compendium
             </button>
           </div>
         </form>
@@ -254,7 +756,7 @@
       <section id="tab-hermes" class="tab-panel">
         <div class="panel-header">
           <h1>Hermes Control</h1>
-          <p class="panel-sub">Install Hermes, start its dashboard, and auto-configure the 1-minute trading cron.</p>
+          <p class="panel-sub">Install Hermes, start its dashboard, and set it to trade on your Blofin account.</p>
         </div>
 
         <!-- Step cards -->
@@ -330,7 +832,7 @@
           <div class="step-card" id="step-cron">
             <div class="step-num">4</div>
             <div class="step-body">
-              <div class="step-title">Configure 5-Minute Cron</div>
+              <div class="step-title">Configure 10-Minute Cron</div>
               <div class="step-desc">Auto-creates the <code>blofin-equity-vertical</code> cron in Hermes with the full trading prompt.</div>
               <div class="step-actions">
                 <button id="btn-configure-cron" class="btn-primary" disabled>
@@ -348,6 +850,38 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Proton VPN helper -->
+        <div class="card" style="margin-top:18px">
+          <div class="card-header">
+            <div class="card-icon" style="background:rgba(34,197,94,0.12);color:#22c55e">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            </div>
+            <div><div class="card-title">Proton VPN Helper</div><div class="card-desc">Guided free VPN flow to reach an allowed Blofin country.</div></div>
+          </div>
+          <div class="field-group">
+            <div class="field">
+              <label for="vpn-country">Preferred country</label>
+              <div class="select-wrap">
+                <select id="vpn-country">
+                  <option value="random">Random allowed country</option>
+                  <option value="RO">Romania</option>
+                  <option value="PL">Poland</option>
+                  <option value="NL">Netherlands</option>
+                  <option value="MX">Mexico</option>
+                </select>
+              </div>
+            </div>
+            <div class="field-full" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:var(--radius-sm);margin-top:6px">
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--text)">Free Proton VPN retry routine</div>
+                <div style="font-size:11px;color:var(--text3)">Change server → wait 1:40 → change server → wait 1:50 → reconnect → wait 10 min if U.S.</div>
+              </div>
+              <button type="button" id="btn-vpn-guide" class="btn-secondary">Open VPN Guide</button>
+            </div>
+            <div id="vpn-status" class="step-status" style="margin-top:8px"></div>
           </div>
         </div>
 
@@ -382,6 +916,25 @@
             <p class="panel-sub">Positions, equity, signals, and voice — live from Blofin.</p>
           </div>
           <button type="button" id="btn-reload-trading" class="btn-secondary">Reload</button>
+        </div>
+        <div class="trading-monitor">
+          <div class="monitor-item">
+            <div class="monitor-label">Trading dashboard</div>
+            <div class="monitor-value" id="trading-dashboard-status">Not loaded yet</div>
+          </div>
+          <div class="monitor-item">
+            <div class="monitor-label">Last activity</div>
+            <div class="monitor-value" id="trading-activity-status">Waiting for Hermes</div>
+          </div>
+          <div class="monitor-item">
+            <div class="monitor-label">What to confirm</div>
+            <div class="monitor-value monitor-hint">
+              1. Equity updates in the dashboard<br>
+              2. Recent Activity shows a Hermes cron tick<br>
+              3. Open positions appear when a trade is placed<br>
+              4. If the dashboard is blank, open Hermes dashboard in browser from Hermes tab
+            </div>
+          </div>
         </div>
         <div id="trading-webview-wrap" class="trading-webview-wrap">
           <webview
@@ -428,19 +981,39 @@
         </div>
 
         <div class="card">
+          <div class="card-header"><div class="card-icon">🔒</div><div class="card-title">Membership</div></div>
+          <div class="about-body">
+            <div class="about-row"><span>Status</span><span id="membership-status">Checking...</span></div>
+            <div class="about-row"><span>Account</span><span id="membership-email">-</span></div>
+            <div class="form-actions" style="padding:0">
+              <button type="button" id="btn-renew-membership" class="btn-secondary">Renew Membership</button>
+              <button type="button" id="btn-auth-logout" class="btn-secondary">Sign out</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
           <div class="card-header"><div class="card-icon">ℹ</div><div class="card-title">About</div></div>
           <div class="about-body">
-            <div class="about-row"><span>App</span><span id="about-app-version">KnightTrader v1.0.0</span></div>
+            <div class="about-row"><span>App</span><span id="about-app-version">KnightTrader v1.1.17</span></div>
             <div class="about-row"><span>Engine</span><span>Electron 28 + Node.js</span></div>
             <div class="about-row"><span>Storage</span><span>AES-256-CBC encrypted</span></div>
             <div class="about-row"><span>Hermes</span><span id="about-hermes-ver">Checking...</span></div>
           </div>
         </div>
+
+        <div class="card" style="border-color: var(--error)">
+          <div class="card-header"><div class="card-icon" style="color: var(--error)">⚠</div><div class="card-title">Danger Zone</div></div>
+          <div class="about-body">
+            <div class="step-desc" style="margin-bottom:10px">This will wipe local credentials, Hermes sandbox, trading cache, and webview data. The app will restart automatically.</div>
+            <button type="button" id="btn-factory-reset" class="btn-primary" style="background: var(--error); border-color: var(--error);">Wipe &amp; Reinstall</button>
+          </div>
+        </div>
       </section>
 
     </main>
-  </div>
 
   <script src="app.js"></script>
 </body>
 </html>
+

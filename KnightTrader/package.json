@@ -1,7 +1,7 @@
 {
   "name": "knight-trader",
-  "version": "1.0.7",
-  "description": "KnightTrader — Hermes credential manager & launcher for Windows",
+  "version": "1.1.19",
+  "description": "KnightTrader \u2014 Hermes credential manager & launcher for Windows",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -57,5 +57,11 @@
   "license": "MIT",
   "allowScripts": {
     "electron@28.3.3": true
+  },
+  "publish": {
+    "provider": "github",
+    "owner": "mknight2690-sys",
+    "repo": "KnightTrader-BloFin",
+    "releaseType": "release"
   }
 }

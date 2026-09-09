@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('kt', {
 
   // Utilities
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  announceVoice: (text) => ipcRenderer.invoke('announce-voice', text),
 
   // Trading / BloHunter
   getBlohunterPreloadPath: () => ipcRenderer.invoke('get-blohunter-preload-path'),
@@ -51,8 +52,23 @@ contextBridge.exposeInMainWorld('kt', {
   getTradingStatus: () => ipcRenderer.invoke('get-trading-status'),
   attachTradingWebview: (webContentsId) => ipcRenderer.invoke('attach-trading-webview', webContentsId),
 
+  // Membership auth
+  authLogin: (creds) => ipcRenderer.invoke('auth-login', creds),
+  authForgotPassword: (email) => ipcRenderer.invoke('auth-forgot-password', email),
+  authSubscriptionStatus: () => ipcRenderer.invoke('auth-subscription-status'),
+  authCreateCheckoutSession: (email) => ipcRenderer.invoke('auth-create-checkout-session', email),
+  authLogout: () => ipcRenderer.invoke('auth-logout'),
+  onSubscriptionLocked: (cb) => ipcRenderer.on('subscription-locked', (_e, status) => cb(status)),
+
   // Window controls
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
-  close: () => ipcRenderer.send('window-close')
+  close: () => ipcRenderer.send('window-close'),
+
+  // VPN controller
+  vpnStatus: () => ipcRenderer.invoke('vpn-status'),
+  vpnDetect: () => ipcRenderer.invoke('vpn-detect'),
+  vpnConnect: (code) => ipcRenderer.invoke('vpn-connect', code),
+  vpnDisconnect: () => ipcRenderer.invoke('vpn-disconnect'),
+  vpnAllowed: () => ipcRenderer.invoke('vpn-allowed')
 });

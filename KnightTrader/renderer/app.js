@@ -1,16 +1,23 @@
 /* ── KnightTrader App Logic v2 ─────────────────────────────── */
 
-let currentTab = 'setup';
+let currentTab = 'howto';
 let autoScroll = true;
 let newLogs = 0;
 let hermesInstalled = false;
 let dashboardRunning = false;
 let dashboardStartInFlight = false;
+let authReady = false;
+let cachedAppVersion = '';
 
 // ── DOM shortcuts ─────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
 const el = {
   minimize: $('btn-minimize'), maximize: $('btn-maximize'), close: $('btn-close'),
+
+  // VPN helper
+  vpnCountry: $('vpn-country'),
+  btnVpnGuide: $('btn-vpn-guide'),
+  vpnStatus: $('vpn-status'),
   navItems: document.querySelectorAll('.nav-item'),
   tabPanels: document.querySelectorAll('.tab-panel'),
   statusPill: $('status-pill'), statusOrb: $('status-orb'), statusLabel: $('status-label'),
@@ -70,7 +77,166 @@ const el = {
   updateBannerText: $('update-banner-text'),
   btnRestartUpdate: $('btn-restart-update'),
   btnDismissUpdate: $('btn-dismiss-update'),
+
+  // Auth
+  loginOverlay: $('login-overlay'),
+  formLogin: $('form-login'),
+  formForgot: $('form-forgot'),
+  loginEmail: $('login-email'),
+  loginPassword: $('login-password'),
+  btnLogin: $('btn-login'),
+  loginError: $('login-error'),
+  btnForgot: $('btn-forgot'),
+  forgotEmail: $('forgot-email'),
+  forgotError: $('forgot-error'),
+  forgotSuccess: $('forgot-success'),
+  btnForgotSend: $('btn-forgot-send'),
+  btnForgotBack: $('btn-forgot-back'),
 };
+
+function setLoginError(message) {
+  if (!el.loginError) return;
+  el.loginError.textContent = message || '';
+}
+function setForgotError(message) {
+  if (!el.forgotError) return;
+  el.forgotError.textContent = message || '';
+}
+function setForgotSuccess(message) {
+  if (!el.forgotSuccess) return;
+  el.forgotSuccess.textContent = message || '';
+}
+function showLoginForm() {
+  if (el.loginOverlay) el.loginOverlay.classList.remove('hidden');
+  if (el.formLogin) el.formLogin.classList.remove('hidden');
+  if (el.formForgot) el.formForgot.classList.add('hidden');
+  setLoginError('');
+  setForgotError('');
+  setForgotSuccess('');
+}
+function showForgotForm() {
+  if (el.loginOverlay) el.loginOverlay.classList.remove('hidden');
+  if (el.formLogin) el.formLogin.classList.add('hidden');
+  if (el.formForgot) el.formForgot.classList.remove('hidden');
+  setLoginError('');
+  setForgotError('');
+  setForgotSuccess('');
+}
+function hideLoginOverlay() {
+  if (el.loginOverlay) el.loginOverlay.classList.add('hidden');
+}
+async function requireAuth() {
+  try {
+    const status = await window.kt.authSubscriptionStatus();
+    if (status?.status === 'active') {
+      authReady = true;
+      hideLoginOverlay();
+      return true;
+    }
+  } catch {}
+  authReady = false;
+  showLoginForm();
+  return false;
+}
+async function handleLoginSubmit(e) {
+  e.preventDefault();
+  setLoginError('');
+  const email = el.loginEmail?.value || '';
+  const password = el.loginPassword?.value || '';
+  if (!email || !password) {
+    setLoginError('Enter both email and password.');
+    return;
+  }
+  if (el.btnLogin) { el.btnLogin.disabled = true; el.btnLogin.textContent = 'Signing in...'; }
+  try {
+    const result = await window.kt.authLogin({ email, password });
+    if (!result?.ok || !['active', 'missing_customer', 'inactive', 'stripe_unavailable'].includes(result.status)) {
+      setLoginError(result?.msg || 'Membership login failed.');
+      return;
+    }
+    authReady = true;
+    hideLoginOverlay();
+  } catch (err) {
+    setLoginError(err?.message || 'Login failed.');
+  } finally {
+    if (el.btnLogin) { el.btnLogin.disabled = false; el.btnLogin.textContent = 'Sign in'; }
+  }
+}
+async function handleForgotSubmit(e) {
+  e.preventDefault();
+  setForgotError('');
+  setForgotSuccess('');
+  const email = el.forgotEmail?.value || '';
+  if (!email) {
+    setForgotError('Enter the email for your account.');
+    return;
+  }
+  if (el.btnForgotSend) { el.btnForgotSend.disabled = true; el.btnForgotSend.textContent = 'Sending...'; }
+  try {
+    const result = await window.kt.authForgotPassword(email);
+    if (!result?.ok) {
+      setForgotError(result?.msg || 'Password reset failed.');
+      return;
+    }
+    setForgotSuccess(result.msg || 'If an account exists, a reset link has been sent.');
+    setForgotError('');
+  } catch (e) {
+    setForgotError(e?.message || 'Password reset failed.');
+  } finally {
+    if (el.btnForgotSend) { el.btnForgotSend.disabled = false; el.btnForgotSend.textContent = 'Send reset link'; }
+  }
+}
+function applySubscriptionLock(status) {
+  authReady = false;
+  const lockOverlay = $('subscription-lock-overlay');
+  const lockMessage = $('lock-message');
+  if (lockOverlay) {
+    lockOverlay.classList.remove('hidden');
+  }
+  if (lockMessage) {
+    lockMessage.textContent = status?.msg || 'Your membership is not active. Trading and Hermes cron are paused.';
+  }
+  if (el.statusLabel) el.statusLabel.textContent = 'Membership required';
+  if (el.statusPill) el.statusPill.classList.remove('running');
+  appendLogLine({ ts: new Date().toISOString(), level: 'warn', message: `🔒 ${status?.msg || 'Active membership required.'}` });
+  pauseHermesForSubscription();
+}
+function hideSubscriptionLock() {
+  const lockOverlay = $('subscription-lock-overlay');
+  if (lockOverlay) lockOverlay.classList.add('hidden');
+}
+function openStripeCheckout() {
+  const email = (el.loginEmail?.value || '').trim() || (sessionStorage.getItem('kt-last-email') || '').trim();
+  if (!email) {
+    setLoginError('Enter your membership email before opening checkout.');
+    return;
+  }
+  window.kt.authCreateCheckoutSession(email).then((result) => {
+    if (result?.ok && result.url) {
+      window.kt.openExternal(result.url);
+    } else {
+      setLoginError(result?.msg || 'Could not open checkout.');
+    }
+  });
+}
+async function enforceSubscriptionOnLaunch() {
+  try {
+    const status = await window.kt.authSubscriptionStatus();
+    if (status?.status !== 'active') {
+      applySubscriptionLock(status || { msg: 'Active membership required.' });
+      return false;
+    }
+    hideSubscriptionLock();
+    return true;
+  } catch {
+    return true;
+  }
+}
+function pauseHermesForSubscription() {
+  if (el.btnStopDashboard && !el.btnStopDashboard.classList.contains('hidden')) {
+    el.btnStopDashboard.click();
+  }
+}
 
 // ── Init ──────────────────────────────────────────────────────
 async function populateNousModels() {
@@ -105,6 +271,9 @@ async function populateNousModels() {
 }
 
 async function init() {
+  if (el.loginOverlay && !el.loginOverlay.classList.contains('hidden')) {
+    if (!(await requireAuth())) return;
+  }
   await populateNousModels();
   // Detect whether the preload bridge actually reached the renderer.
   if (!window.kt) {
@@ -115,7 +284,15 @@ async function init() {
     const appVersion = await window.kt.getAppVersion();
     const normalized = appVersion ? String(appVersion).replace(/^v/, '') : '';
     const label = normalized ? `v${normalized}` : '1.0.0';
-    if (el.popupAppVersion) el.popupAppVersion.textContent = normalized;
+    // The popup menu is rendered on demand, so its #popup-app-version
+    // node may not exist yet. Write to whatever live node we can find,
+    // and also remember the version so buildPopupMenu() can use it later.
+    if (normalized) {
+      const liveVersionNode = el.popupMenu?.querySelector('#popup-app-version');
+      if (liveVersionNode) liveVersionNode.textContent = normalized;
+      // Stash on a module-scoped var so buildPopupMenu() picks it up.
+      cachedAppVersion = normalized;
+    }
     if (el.sidebarVersion) el.sidebarVersion.textContent = label;
     if (el.aboutAppVersion) el.aboutAppVersion.textContent = `KnightTrader ${label}`;
   } catch (e) {}
@@ -410,17 +587,24 @@ let tradingLoaded = false;
 let tradingPreloadPath = '';
 let tradingInitPromise = null;
 
-function setTradingStatus(_text, _state) {
-  // Status pill was removed from UI; keep this as a safe no-op
-  // because load/error handlers still call it.
+function setTradingStatus(text, state) {
+  const statusEl = document.getElementById('trading-dashboard-status');
+  const activityEl = document.getElementById('trading-activity-status');
+  if (statusEl) statusEl.textContent = text || 'Not loaded yet';
+  if (statusEl) statusEl.className = 'monitor-value' + (state ? ` ${state}` : '');
+}
+
+function setTradingActivity(text) {
+  const el = document.getElementById('trading-activity-status');
+  if (el) el.textContent = text || 'Waiting for Hermes';
 }
 
 function showTradingError(message) {
-  // Surface trading errors in Logs instead of a removed inline banner.
   if (!message) return;
   try {
     appendLogLine({ ts: Date.now(), type: 'warn', msg: `[Trading] ${String(message)}` });
   } catch (_) {}
+  setTradingStatus('Load failed', 'error');
 }
 
 function guestHasPage(webview) {
@@ -466,21 +650,31 @@ function bindTradingWebview(webview) {
   webview.addEventListener('did-finish-load', async () => {
     try {
       const s = await window.kt.getTradingStatus();
-      setTradingStatus(s?.sseConnected ? 'Live · SSE connected' : 'Live', 'live');
+      if (s?.sseConnected) {
+        setTradingStatus('Live · SSE connected', 'ok');
+        setTradingActivity('Signal connected');
+      } else {
+        setTradingStatus('Live', 'pending');
+        setTradingActivity('Waiting for signal snapshot');
+      }
     } catch (_) {
-      setTradingStatus('Live', 'live');
+      setTradingStatus('Live', 'pending');
+      setTradingActivity('Waiting for signal snapshot');
     }
   });
   webview.addEventListener('did-fail-load', (e) => {
     if (e.errorCode === -3) return;
+    const reason = e.errorDescription || `Failed to load trading desk (${e.errorCode})`;
     setTradingStatus('Load failed', 'error');
-    showTradingError(e.errorDescription || `Failed to load trading desk (${e.errorCode})`);
+    setTradingActivity('Check Hermes dashboard');
+    showTradingError(`${reason}. If trading desk is unavailable, open the Hermes Dashboard in the Hermes tab.`);
   });
   webview.addEventListener('console-message', (e) => {
     if (e.level >= 2 && /unexpected token|chrome is not defined/i.test(e.message || '')) {
       setTradingStatus('Desk error', 'error');
+      setTradingActivity('Check Hermes dashboard');
       const where = [e.sourceId, Number.isFinite(e.line) ? `:${e.line}` : ''].join('');
-      showTradingError(where ? `${e.message} (${where})` : e.message);
+      showTradingError(`${e.message}${where ? ` (${where})` : ''}. If the trading desk cannot load, use the Hermes tab dashboard.`);
     }
   });
   return webview;
@@ -551,6 +745,7 @@ async function loadTradingDesk(forceReload = false) {
   tradingLoaded = true;
 }
 
+let tradingFirstLoadWelcomed = false;
 async function initTradingTab() {
   if (tradingInitPromise) return tradingInitPromise;
   if (tradingLoaded && guestHasPage(el.tradingWebview)) {
@@ -563,12 +758,44 @@ async function initTradingTab() {
   }
 
   tradingInitPromise = (async () => {
-    try { await loadTradingDesk(false); } catch (_) {}
+    try {
+      await loadTradingDesk(false);
+      if (!tradingFirstLoadWelcomed) {
+        tradingFirstLoadWelcomed = true;
+        window.kt?.announceVoice?.('Welcome to KnightTrader Blofin').catch(() => {});
+      }
+    } catch (_) {}
     finally { tradingInitPromise = null; }
   })();
 
   return tradingInitPromise;
 }
+
+function handleTrayRestore() {
+  try {
+    if (!currentTab || currentTab === 'trading') {
+      if (guestHasPage(el.tradingWebview)) {
+        loadTradingDesk(true).catch(() => {});
+      } else {
+        initTradingTab();
+      }
+    }
+  } catch (_) {}
+}
+
+if (window.kt?.onLogLine) {
+  window.kt.onLogLine(() => {});
+}
+
+if (window.kt?.onUpdateError) {
+  window.kt.onUpdateError(() => {});
+}
+
+try {
+  if (window.ipcRenderer?.on) {
+    window.ipcRenderer.on('kt-restore-trading-webview', handleTrayRestore);
+  }
+} catch (_) {}
 
 if (el.btnReloadTrading) {
   el.btnReloadTrading.addEventListener('click', () => loadTradingDesk(true).catch(() => {}));
@@ -786,8 +1013,8 @@ el.btnConfigureCron.addEventListener('click', async () => {
   const result = await window.kt.configureCron();
   if (result.ok) {
     el.cronStatus.textContent = result.updated
-      ? '✅ Cron updated — every 5 minutes!'
-      : '✅ Cron active — every 5 minutes!';
+      ? '✅ Cron updated — every 10 minutes!'
+      : '✅ Cron active — every 10 minutes!';
     el.cronStatus.style.color = 'var(--good)';
     el.manualPromptWrap.classList.add('hidden');
   } else {
@@ -870,25 +1097,109 @@ if (el.btnDismissUpdate) {
 
 window.kt.onUpdateAvailable((info) => {
   setUpdateBannerVisible(true, 'Update available', 'Restart to install the latest version.');
-  if (el.popupUpdateStatus) el.popupUpdateStatus.textContent = 'Update available — restart to install';
+  setPopupUpdateStatus('Update available — restart to install');
 });
 window.kt.onUpdateNotAvailable((info) => {
-  if (el.popupUpdateStatus) el.popupUpdateStatus.textContent = 'You’re on the latest version';
+  setPopupUpdateStatus('You’re on the latest version');
 });
 window.kt.onUpdateDownloaded((info) => {
   setUpdateBannerVisible(true, 'Update ready', 'Restart to apply the latest version.');
-  if (el.popupUpdateStatus) el.popupUpdateStatus.textContent = 'Update ready — restart to install';
+  setPopupUpdateStatus('Update ready — restart to install');
 });
 window.kt.onUpdateError((error) => {
-  const msg = error?.message || String(error || 'Update failed');
-  if (el.popupUpdateStatus) el.popupUpdateStatus.textContent = msg;
+  let msg = 'Update failed';
+  if (error && typeof error === 'object') {
+    msg = error.message || error.error || JSON.stringify(error);
+  } else if (typeof error === 'string') {
+    msg = error;
+  } else if (error != null) {
+    msg = String(error);
+  }
+  setPopupUpdateStatus(msg);
 });
 
 // ── Update popup menu ───────────────────────────────────────────
+//
+// The bottom-left menu (#popup-menu) is rendered once on first show and
+// then left alone. The previous implementation rebuilt the menu's
+// innerHTML on every open, which detached the cached
+// el.btnCheckForUpdates / el.popupUpdateStatus / el.popupAppVersion
+// references and made the "Check for updates" button visually dead.
+// We now use event delegation on #popup-menu and re-query the live
+// status elements on every update so they always land on the visible
+// node.
+
+const POPUP_MENU_BUILT = { value: false };
+const DEFAULT_UPDATE_STATUS = 'Updates are automatic';
+
+function buildPopupMenu() {
+  if (!el.popupMenu || POPUP_MENU_BUILT.value) return;
+  // Render once. Subsequent opens will refresh the status text only.
+  const currentVersion = cachedAppVersion || '';
+  const initialStatus = DEFAULT_UPDATE_STATUS;
+  el.popupMenu.innerHTML = `
+    <button id="btn-check-for-updates" class="popup-menu-item" role="menuitem" type="button">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      <span>Check for updates</span>
+    </button>
+    <div class="popup-separator"></div>
+    <div class="popup-menu-item popup-menu-item-disabled" aria-disabled="true">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      <span>KnightTrader BloFin</span>
+    </div>
+    <div class="popup-menu-item popup-menu-item-disabled" aria-disabled="true">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+      <span>v<span id="popup-app-version">${currentVersion || '1.1.17'}</span></span>
+    </div>
+    <div class="popup-menu-item popup-menu-item-disabled" aria-disabled="true">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <span id="popup-update-status">${initialStatus}</span>
+    </div>
+  `;
+  // Re-resolve cached references to the live (now populated) DOM nodes.
+  el.btnCheckForUpdates = el.popupMenu.querySelector('#btn-check-for-updates');
+  el.popupUpdateStatus = el.popupMenu.querySelector('#popup-update-status');
+  el.popupAppVersion = el.popupMenu.querySelector('#popup-app-version');
+  POPUP_MENU_BUILT.value = true;
+}
+
+function setPopupUpdateStatus(text) {
+  const node = el.popupMenu?.querySelector('#popup-update-status') || el.popupUpdateStatus;
+  if (node) node.textContent = text;
+}
+
+function setPopupUpdateButtonDisabled(disabled) {
+  const node = el.popupMenu?.querySelector('#btn-check-for-updates') || el.btnCheckForUpdates;
+  if (node) node.disabled = !!disabled;
+}
+
 function setPopupOpen(open) {
   if (!el.popupLauncher || !el.popupMenu) return;
-  el.popupMenu.classList.toggle('hidden', !open);
-  if (el.btnPopupTrigger) el.btnPopupTrigger.setAttribute('aria-expanded', String(open));
+  if (open) {
+    if (el.hermesWebview) el.hermesWebview.classList.add('webview-parked');
+    if (el.tradingWebview) el.tradingWebview.classList.add('webview-parked');
+  } else {
+    if (el.hermesWebview) el.hermesWebview.classList.remove('webview-parked');
+    if (el.tradingWebview) el.tradingWebview.classList.remove('webview-parked');
+  }
+
+  const show = () => {
+    el.popupMenu.classList.toggle('hidden', false);
+    if (el.btnPopupTrigger) el.btnPopupTrigger.setAttribute('aria-expanded', 'true');
+    if (!POPUP_MENU_BUILT.value) buildPopupMenu();
+  };
+  const hide = () => {
+    el.popupMenu.classList.toggle('hidden', true);
+    if (el.btnPopupTrigger) el.btnPopupTrigger.setAttribute('aria-expanded', 'false');
+  };
+
+  if (open) {
+    hide();
+    if (requestAnimationFrame) requestAnimationFrame(() => requestAnimationFrame(show));
+    else show();
+  } else {
+    hide();
+  }
 }
 
 function togglePopupMenu() {
@@ -910,6 +1221,21 @@ if (el.popupLauncher) {
   });
 }
 
+// Single delegated listener for any click inside the menu. Survives any
+// future menu-content refresh because the parent element never changes.
+if (el.popupMenu) {
+  el.popupMenu.addEventListener('click', (e) => {
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    const btn = target.closest('#btn-check-for-updates');
+    if (btn) {
+      e.preventDefault();
+      e.stopPropagation();
+      checkForUpdatesFromMenu();
+    }
+  });
+}
+
 document.addEventListener('click', (e) => {
   if (!el.popupMenu?.classList.contains('hidden')) {
     const inside = el.popupLauncher?.contains(e.target);
@@ -924,24 +1250,161 @@ document.addEventListener('keydown', (e) => {
 });
 
 async function checkForUpdatesFromMenu() {
-  if (el.popupUpdateStatus) {
-    el.popupUpdateStatus.textContent = 'Checking for updates…';
-  }
-  if (el.btnCheckForUpdates) {
-    el.btnCheckForUpdates.disabled = true;
-  }
+  setPopupUpdateStatus('Checking for updates…');
+  setPopupUpdateButtonDisabled(true);
   try {
     await window.kt.checkForUpdates();
   } catch (e) {
     const msg = e?.message || 'Update check failed';
-    if (el.popupUpdateStatus) el.popupUpdateStatus.textContent = msg;
+    setPopupUpdateStatus(msg);
   } finally {
-    if (el.btnCheckForUpdates) el.btnCheckForUpdates.disabled = false;
+    setPopupUpdateButtonDisabled(false);
+    setTimeout(() => {
+      const node = el.popupMenu?.querySelector('#popup-update-status');
+      if (node && node.textContent === 'Checking for updates…') {
+        node.textContent = DEFAULT_UPDATE_STATUS;
+      }
+    }, 1500);
   }
 }
 
-if (el.btnCheckForUpdates) {
-  el.btnCheckForUpdates.addEventListener('click', checkForUpdatesFromMenu);
+if (el.btnForgot) {
+  el.btnForgot.addEventListener('click', () => showForgotForm());
+}
+if (el.btnForgotBack) {
+  el.btnForgotBack.addEventListener('click', () => showLoginForm());
+}
+if (el.formLogin) {
+  el.formLogin.addEventListener('submit', handleLoginSubmit);
+}
+if (el.formForgot) {
+  el.formForgot.addEventListener('submit', handleForgotSubmit);
+}
+if (window.kt?.onSubscriptionLocked) {
+  window.kt.onSubscriptionLocked((status) => applySubscriptionLock(status));
+}
+
+async function refreshMembershipUi() {
+  try {
+    const status = await window.kt.authSubscriptionStatus();
+    const statusEl = document.getElementById('membership-status');
+    const emailEl = document.getElementById('membership-email');
+    if (statusEl) statusEl.textContent = status?.status === 'active' ? 'Active' : 'Inactive';
+    if (emailEl && status?.email) emailEl.textContent = status.email;
+  } catch {}
+}
+
+if (document.getElementById('btn-renew-membership')) {
+  document.getElementById('btn-renew-membership').addEventListener('click', openStripeCheckout);
+}
+if (document.getElementById('btn-auth-logout')) {
+  document.getElementById('btn-auth-logout').addEventListener('click', async () => {
+    await window.kt.authLogout();
+    authReady = false;
+    hideLoginOverlay();
+    showLoginForm();
+  });
+}
+if (document.getElementById('btn-factory-reset')) {
+  document.getElementById('btn-factory-reset').addEventListener('click', async () => {
+    const confirmed = confirm('Wipe all local data and restart the app? This removes credentials, Hermes sandbox, trading cache, and webview data.');
+    if (!confirmed) return;
+    const btn = document.getElementById('btn-factory-reset');
+    if (btn) { btn.disabled = true; btn.textContent = 'Wiping...'; }
+    try {
+      await window.kt.factoryReset();
+    } catch {}
+    try {
+      await window.kt.authLogout();
+    } catch {}
+    authReady = false;
+    hideLoginOverlay();
+    showLoginForm();
+    try {
+      await window.kt.relaunchApp();
+    } catch {}
+  });
+}
+
+// Lock overlay buttons
+const btnLockRenew = document.getElementById('btn-lock-renew');
+const btnLockRecheck = document.getElementById('btn-lock-recheck');
+const btnLockSignout = document.getElementById('btn-lock-signout');
+const lockMessage = document.getElementById('lock-message');
+
+if (btnLockRenew) {
+  btnLockRenew.addEventListener('click', async () => {
+    try {
+      const result = await window.kt.authCreateCheckoutSession();
+      if (result?.ok && result.url) {
+        window.kt.openExternal(result.url);
+      } else {
+        if (lockMessage) lockMessage.textContent = result?.msg || 'Could not open checkout.';
+      }
+    } catch (e) {
+      if (lockMessage) lockMessage.textContent = 'Could not open checkout.';
+    }
+  });
+}
+if (btnLockRecheck) {
+  btnLockRecheck.addEventListener('click', async () => {
+    if (btnLockRecheck) btnLockRecheck.disabled = true;
+    if (lockMessage) lockMessage.textContent = 'Rechecking...';
+    try {
+      const status = await window.kt.authSubscriptionStatus();
+      if (status?.status === 'active') {
+        hideSubscriptionLock();
+        hideLoginOverlay();
+        authReady = true;
+        if (lockMessage) lockMessage.textContent = '';
+      } else {
+        if (lockMessage) lockMessage.textContent = status?.msg || 'Membership is still not active.';
+      }
+    } catch (e) {
+      if (lockMessage) lockMessage.textContent = 'Recheck failed. Try again.';
+    } finally {
+      if (btnLockRecheck) btnLockRecheck.disabled = false;
+    }
+  });
+}
+if (btnLockSignout) {
+  btnLockSignout.addEventListener('click', async () => {
+    await window.kt.authLogout();
+    authReady = false;
+    hideSubscriptionLock();
+    showLoginForm();
+  });
+}
+
+// ── VPN helper ───────────────────────────────────────────────
+function setVpnStatus(message, state) {
+  if (!el.vpnStatus) return;
+  el.vpnStatus.textContent = message || '';
+  el.vpnStatus.className = 'step-status' + (state ? ` ${state}` : '');
+}
+
+function openVpnGuide() {
+  const guideUrl = 'https://protonvpn.com/free-vpn';
+  const country = el.vpnCountry?.value || 'random';
+  const isRandom = country === 'random';
+  const countryLabel = isRandom ? 'an allowed country' : `country code ${country}`;
+  const note = isRandom
+    ? ''
+    : ` Selected preferred exit: ${countryLabel}.`;
+  setVpnStatus(`Opening ProtonVPN guide for ${countryLabel}.${note}`, '');
+  window.kt.openExternal(guideUrl).catch(() => {});
+}
+
+if (el.btnVpnGuide) {
+  el.btnVpnGuide.addEventListener('click', () => openVpnGuide());
+}
+
+if (el.navItems) {
+  el.navItems.forEach((item) => item.addEventListener('click', () => {
+    if (item.dataset.tab === 'hermes' && el.vpnStatus && !el.vpnStatus.textContent.trim()) {
+      setVpnStatus('Use the Proton VPN helper below for free retry guidance.', '');
+    }
+  }));
 }
 
 // ── Boot ─────────────────────────────────────────────────────

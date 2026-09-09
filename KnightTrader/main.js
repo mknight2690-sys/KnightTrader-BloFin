@@ -3,12 +3,136 @@ const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { BlohunterBridge } = require('./blohunter-bridge');
+const vpn = require('./vpn');
 const { spawn, execFileSync } = require('child_process');
 const crypto = require('crypto');
 const http = require('http');
 const https = require('https');
 const os = require('os');
-const { autoUpdater } = require('electron-updater');
+
+const UPDATE_OWNER = '1bananaonthewall-ux';
+const UPDATE_REPO = 'KnightTrader-BloFin';
+const UPDATE_RELEASE_API = `https://api.github.com/repos/${UPDATE_OWNER}/${UPDATE_REPO}/releases/latest`;
+let pendingUpdateRelease = null;
+
+function normalizeVersion(raw) {
+  return String(raw || '').replace(/^v/, '').trim();
+}
+function parseSemver(raw) {
+  const v = normalizeVersion(raw);
+  const m = v.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!m) return null;
+  return { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]), raw: v };
+}
+function versionGt(a, b) {
+  const av = parseSemver(a);
+  const bv = parseSemver(b);
+  if (!av || !bv) return String(a).trim() !== String(b).trim();
+  if (av.major !== bv.major) return av.major > bv.major;
+  if (av.minor !== bv.minor) return av.minor > bv.minor;
+  return av.patch > bv.patch;
+}
+function findWindowsAsset(release) {
+  if (!Array.isArray(release.assets)) return null;
+  return release.assets.find((asset) => /\.exe$/i.test(asset.name) || /setup/i.test(asset.name)) || null;
+}
+async function fetchLatestRelease() {
+  const resp = await fetch(UPDATE_RELEASE_API, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'KnightTrader-BloFin',
+    },
+  });
+  if (!resp.ok) throw new Error(`GitHub release check failed: ${resp.status} ${resp.statusText}`);
+  return await resp.json();
+}
+async function downloadFileToPath(url, dest) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(dest);
+    const streamUrl = new URL(url);
+    const req = https.request(streamUrl, { method: 'GET' }, (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        https.get(res.headers.location, (follow) => {
+          follow.pipe(file);
+          follow.on('error', reject);
+        });
+        return;
+      }
+      if (res.statusCode && res.statusCode >= 400) {
+        reject(new Error(`Update download failed: ${res.statusCode}`));
+        return;
+      }
+      res.pipe(file);
+      res.on('error', reject);
+    });
+    req.on('error', reject);
+    file.on('finish', () => {
+      file.close();
+      resolve(dest);
+    });
+  });
+}
+function broadcastUpdate(channel, payload) {
+  for (const wc of webContents.getAllWebContents()) wc.send(channel, payload);
+}
+async function checkForUpdatesFromMain() {
+  appendLog('🔎 Checking for updates…', 'info');
+  try {
+    const release = await fetchLatestRelease();
+    const latestVersion = normalizeVersion(release.tag_name || release.name || '');
+    const currentVersion = normalizeVersion(app.getVersion());
+    const asset = findWindowsAsset(release);
+    if (!latestVersion || versionGt(latestVersion, currentVersion)) {
+      pendingUpdateRelease = release;
+      appendLog(`⬆ Update available: ${latestVersion || release.tag_name}`, 'success');
+      broadcastUpdate('update-available', { version: latestVersion || release.tag_name, release });
+    } else {
+      pendingUpdateRelease = null;
+      appendLog(`✅ Up to date: ${currentVersion}`, 'info');
+      broadcastUpdate('update-not-available', { version: currentVersion, release });
+    }
+  } catch (err) {
+    pendingUpdateRelease = null;
+    appendLog(`⚠ Update check failed: ${err?.message || err}`, 'warn');
+    broadcastUpdate('update-error', err);
+  }
+}
+async function downloadPendingUpdate() {
+  if (!pendingUpdateRelease) throw new Error('No update is available');
+  const asset = findWindowsAsset(pendingUpdateRelease);
+  if (!asset) throw new Error('No Windows installer in the latest release');
+  const dest = path.join(app.getPath('temp'), `KnightTrader-Update-${Date.now()}.exe`);
+  appendLog(`⬇ Downloading update: ${asset.name}`, 'info');
+  await downloadFileToPath(asset.browser_download_url || asset.url, dest);
+  appendLog(`⬇ Update ready: ${pendingUpdateRelease.tag_name || pendingUpdateRelease.name}`, 'success');
+  return dest;
+}
+function forceQuitApp() {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try { mainWindow.destroy(); } catch {}
+    }
+  } catch {}
+  try {
+    if (appTray) {
+      try { appTray.destroy(); } catch {}
+      appTray = null;
+      trayReady = false;
+    }
+  } catch {}
+}
+async function quitAndInstallFromMain() {
+  try {
+    const installerPath = await downloadPendingUpdate();
+    forceQuitApp();
+    app.relaunch({ args: [installerPath] });
+    app.quit();
+  } catch (err) {
+    appendLog(`⚠ Install update failed: ${err?.message || err}`, 'warn');
+    broadcastUpdate('update-error', err);
+    throw err;
+  }
+}
 
 const BLOHUNTER_SRC = path.join(os.homedir(), 'Downloads', 'blohunter-connect', 'src');
 let blohunterWatcherReady = false;
@@ -53,13 +177,16 @@ const NOUS_INFERENCE_URL = 'https://inference-api.nousresearch.com/v1/chat/compl
 const NOUS_INFERENCE_BASE = 'https://inference-api.nousresearch.com/v1';
 const NOUS_RECOMMENDED_MODELS_URL = 'https://portal.nousresearch.com/api/nous/recommended-models';
 const DASHBOARD_PORT = 9119;
-const DASHBOARD_PORT_CANDIDATES = [DASHBOARD_PORT, 9120];
+const DASHBOARD_PORT_CANDIDATES = [DASHBOARD_PORT, 9120, 9121, 9122];
 const DASHBOARD_PORT_PROBE_TIMEOUT = 1200;
 const DASHBOARD_PORT_START_TIMEOUT = 20000;
 const GATEWAY_READY_TIMEOUT = 90000;
 let activeDashboardPort = null;
 function getDashboardBaseUrl(port) {
   return `http://127.0.0.1:${port || activeDashboardPort || DASHBOARD_PORT}`;
+}
+function getActiveDashboardPort() {
+  return activeDashboardPort || DASHBOARD_PORT;
 }
 
 // ── Sandboxed Hermes paths (inside app userData — never system-wide) ────────
@@ -629,12 +756,22 @@ function appendLog(msg, type = 'info') {
 }
 
 function buildTray() {
-  if (trayReady || appTray) return;
+  if (appTray) return;
   try {
-    const iconPath = path.join(__dirname, 'assets', 'tray-icon.png');
-    const icon = nativeImage.createFromPath(iconPath);
-    const image = icon.isEmpty() ? nativeImage.createEmpty() : icon;
-    trayReady = true;
+    const iconPaths = process.platform === 'win32'
+      ? [path.join(__dirname, 'assets', 'icon.ico'), path.join(__dirname, 'assets', 'icon.png')]
+      : [path.join(__dirname, 'assets', 'icon.png'), path.join(__dirname, 'assets', 'icon.ico')];
+    let image = nativeImage.createEmpty();
+    for (const iconPath of iconPaths) {
+      const icon = nativeImage.createFromPath(iconPath);
+      if (!icon.isEmpty()) {
+        image = icon;
+        break;
+      }
+    }
+    if (image.isEmpty()) {
+      image = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5gQWESo1yI6KEwAAAFZJREFUWMPt1zEOACAIA0D+/6cj2RkhsZkx29nZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnYIAQYAw9wJf1QAAAABJRU5ErkJggg==');
+    }
     appTray = new Tray(image);
     appTray.setToolTip('KnightTrader Blofin');
     const contextMenu = Menu.buildFromTemplate([
@@ -643,17 +780,37 @@ function buildTray() {
     ]);
     appTray.setContextMenu(contextMenu);
     appTray.on('double-click', restoreFromTray);
-    appendLog('🧩 System tray ready — close button now minimizes to tray', 'info');
+    trayReady = true;
+    appendLog('🧩 System tray ready', 'info');
   } catch (e) {
+    trayReady = false;
+    if (appTray) {
+      try { appTray.destroy(); } catch {}
+      appTray = null;
+    }
     appendLog(`⚠ Tray init failed: ${e.message}`, 'warn');
   }
 }
 
 function restoreFromTray() {
-  if (mainWindow) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
     if (mainWindow.isMinimized()) mainWindow.restore();
-    if (mainWindow.isVisible()) mainWindow.focus();
-    else mainWindow.show();
+    if (!mainWindow.isVisible()) mainWindow.show();
+    mainWindow.focus();
+    refreshTradingWebviewAfterRestore();
+  } catch (e) {
+    appendLog(`⚠ Tray restore failed: ${e.message}`, 'warn');
+  }
+}
+
+function refreshTradingWebviewAfterRestore() {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send('kt-restore-trading-webview');
+    }
+  } catch (e) {
+    appendLog(`ℹ Trading webview refresh skipped: ${e.message}`, 'info');
   }
 }
 
@@ -845,21 +1002,20 @@ function probeDashboardPort(port, timeoutMs = 1500) {
   return new Promise((resolve) => {
     const req = http.get(`http://127.0.0.1:${targetPort}/api/health`, (res) => {
       res.resume();
-      resolve(true);
+      resolve({ ok: true, port: targetPort });
     });
-    req.on('error', () => resolve(false));
+    req.on('error', () => resolve({ ok: false, port: targetPort }));
     req.setTimeout(timeoutMs, () => {
       req.destroy();
-      resolve(false);
+      resolve({ ok: false, port: targetPort });
     });
   });
 }
 
 async function findAvailableDashboardPort() {
   for (const port of DASHBOARD_PORT_CANDIDATES) {
-    if (await probeDashboardPort(port, DASHBOARD_PORT_PROBE_TIMEOUT)) {
-      return port;
-    }
+    const result = await probeDashboardPort(port, DASHBOARD_PORT_PROBE_TIMEOUT);
+    if (result.ok) return result.port;
   }
   return null;
 }
@@ -988,7 +1144,13 @@ async function waitForDashboardPort(maxMs = 480000) {
   const start = Date.now();
   let lastBeat = 0;
   while (Date.now() - start < maxMs) {
-    if (await probeDashboardPort()) return true;
+    for (const port of DASHBOARD_PORT_CANDIDATES) {
+      const result = await probeDashboardPort(port, DASHBOARD_PORT_PROBE_TIMEOUT);
+      if (result.ok) {
+        activeDashboardPort = result.port;
+        return true;
+      }
+    }
     if (!isDashboardProcessAlive() && Date.now() - start > 4000) {
       const tail = dashboardLastOutput.slice(-8).join(' | ');
       appendLog(`⚠ Dashboard process exited before it was ready${tail ? `: ${tail}` : ''}`, 'error');
@@ -1087,12 +1249,13 @@ async function ensureGatewayRunning(token) {
 async function ensureDashboardAndGateway() {
   const portReady = await waitForDashboardPort();
   if (!portReady) {
+    const activePort = getActiveDashboardPort();
     const tail = dashboardLastOutput.slice(-6).join(' | ');
     return {
       ok: false,
       msg: tail
-        ? `Dashboard did not respond on port 9119. ${tail}`
-        : 'Dashboard did not respond on port 9119',
+        ? `Dashboard did not respond on port ${activePort}. ${tail}`
+        : `Dashboard did not respond on port ${activePort}`,
     };
   }
 
@@ -1164,14 +1327,16 @@ async function startHermesDashboard() {
   ensureHermesExecutableRunnable(installStatus.path);
   dashboardReady = false;
 
-  if (await probeDashboardPort()) {
+  const existing = await probeDashboardPort();
+  if (existing.ok) {
+    activeDashboardPort = existing.port;
     appendLog('ℹ Dashboard already listening — ensuring gateway is running…', 'info');
     return ensureDashboardAndGateway();
   }
 
   if (!isDashboardProcessAlive()) {
     dashboardLastOutput = [];
-    appendLog('▶ Starting Hermes dashboard + gateway on port 9119…', 'info');
+    appendLog('▶ Starting Hermes dashboard + gateway…', 'info');
     appendLog(`  Using: ${installStatus.path}`, 'info');
     if (!hermesWebDistReady()) {
       appendLog('  First start builds the Hermes web UI (can take a few minutes)…', 'info');
@@ -1192,14 +1357,18 @@ async function startHermesDashboard() {
     hermesDashProcess.stderr.on('data', (d) => rememberDashboardOutput(d, 'warn'));
     hermesDashProcess.on('error', (e) => appendLog(`Dashboard error: ${e.message}`, 'error'));
     hermesDashProcess.on('close', async (code) => {
-    hermesDashProcess = null;
-      if (await probeDashboardPort()) return;
-    dashboardReady = false;
+      hermesDashProcess = null;
+      const after = await probeDashboardPort();
+      if (after.ok) {
+        activeDashboardPort = after.port;
+        return;
+      }
+      dashboardReady = false;
       appendLog(`◼ Hermes dashboard stopped (code ${normalizeProcessExitCode(code)})`, code === 0 ? 'info' : 'error');
-    mainWindow?.webContents?.send('dashboard-stopped', {});
-  });
+      mainWindow?.webContents?.send('dashboard-stopped', {});
+    });
   } else {
-    appendLog('ℹ Hermes dashboard is still starting — waiting for port 9119…', 'info');
+    appendLog('ℹ Hermes dashboard is still starting…', 'info');
   }
 
   return ensureDashboardAndGateway();
@@ -1264,11 +1433,11 @@ function buildCronPrompt() {
 
 UNIVERSE + TRANSPORT (the #1 thing that breaks, already solved)
 BloFin has 400+ perpetual futures (USDT-SWAP). The universe lives at:
-  GET https://openapi.blofin.com/api/v1/market/tickers?instType=SWAP    (490 symbols; filter vol>=300k for "liquid")
-THE WAF TRUTH: From a datacenter/sandbox egress (no inherited VPN), plain 'curl', 'requests', AND 'curl_cffi' chrome-impersonation ALL return HTTP 403 + BloFin HTML block page. This is a JA3/fingerprint WAF challenge, NOT a geo ban and NOT bad keys. The fix is a real browser fingerprint:
+  GET https://openapi.blofin.com/api/v1/market/tickers?instType=SWAP   (490 symbols; filter vol>=500k for "liquid")
+THE WAF TRUTH: From a datacenter/sandbox egress (no inherited VPN), plain \`curl\`, \`requests\`, AND \`curl_cffi\` chrome-impersonation ALL return HTTP 403 + BloFin HTML block page. This is a JA3/fingerprint WAF challenge, NOT a geo ban and NOT bad keys. The fix is a real browser fingerprint:
   → Use **Camoufox headless** (its network stack clears the WAF: HTTP 200 + real JSON).
-  → On a Windows host WITH the NL VPN active, 'curl_cffi' (chrome impersonation) also works. Try curl_cffi first; if you get 403 HTML, switch to Camoufox. Do NOT conclude "impossible."
-Camoufox setup (one time): 'pip install camoufox' then 'camoufox fetch' (downloads the browser). It must be importable in the python you run (the hermes venv may lack it — use /usr/bin/python3 if needed).
+  → On a Windows host WITH the NL VPN active, \`curl_cffi\` (chrome impersonation) also works. Try curl_cffi first; if you get 403 HTML, switch to Camoufox. Do NOT conclude "impossible."
+Camoufox setup (one time): \`pip install camoufox\` then \`camoufox fetch\` (downloads the browser). It must be importable in the python you run (the hermes venv may lack it — use /usr/bin/python3 if needed).
 
 CREDENTIALS + SIGNING
 Use exactly your compendium file (example: ${compPath}) containing:
@@ -1280,7 +1449,7 @@ SIGNING (verified-working variant — variants 401/152400/152409/152410 are wron
   ACCESS-TIMESTAMP = epoch MILLISECONDS (int(time.time()*1000))
   ACCESS-NONCE     = uuid4().hex
   prehash = requestPath(+query for GET) + METHOD + ts + nonce + body
-  sign    = base64( hex( hmac_sha256(secret, prehash) ) )    # base64 of the HEX string, not raw bytes
+  sign    = base64( hex( hmac_sha256(secret, prehash) ) )   # base64 of the HEX string, not raw bytes
   Headers: ACCESS-KEY, ACCESS-SIGN, ACCESS-TIMESTAMP, ACCESS-NONCE, ACCESS-PASSPHRASE
   brokerId = "5388cb1f51cec2e3"  REQUIRED in EVERY trade/leverage POST body (else 152012/152013). If your key differs and you get that error, supply your own brokerId.
   Account is in HEDGE mode → every order MUST include positionSide: "long" or "short". Use isolated margin.
@@ -1290,14 +1459,14 @@ REUSABLE CLIENT (write this to disk on first run, e.g. /home/mknig/blofin_sandbo
 import time, uuid, hmac, hashlib, base64, json
 from camoufox.sync_api import Camoufox
 
-COMPENDIUM = r"${compPath}"  # YOUR path
+COMPENDIUM = "${compPath}"  # YOUR path
 BROKER_ID = "5388cb1f51cec2e3"
 BASE = "https://openapi.blofin.com"
 FETCH_JS = """async (a)=>{const r=await fetch(a.url,{method:a.method,headers:a.headers,body:a.body||undefined});const t=await r.text();return {status:r.status,text:t};}"""
 
 creds={}
 for line in open(COMPENDIUM):
-    line=line.strip().lstrip("\ufeff")
+    line=line.strip().lstrip("\\ufeff")
     if ":" in line:
         k,v=line.split(":",1); creds[k.strip().lower()]=v.strip()
 API_KEY=creds["api key"]; SECRET=creds.get("secret key") or creds["secret"]; PASS=creds["passphrase"]
@@ -1364,57 +1533,38 @@ ENDPOINT MAP + GOTCHAS
 - Public: /api/v1/market/*  (tickers, candles, instruments). NOT /api/v1/public/* (401).
 - Signed: /api/v1/account/balance, /api/v1/account/positions, /api/v1/account/set-leverage,
   /api/v1/trade/order, /api/v1/trade/cancel-order, /api/v1/trade/orders-tpsl-pending.
-- CANDLES GRANULARITY IS IGNORED: granularity=60/300/3600 all return 1m. Always fetch 1m and RESAMPLE to 5m/15m/1h in code. Paginate with 'after'=<oldest ts> (cursor is INVERTED from OKX: after=older).
-- POSITIONS field name is 'positions' (open size), NOT 'total'; available is 'availablePositions'. A filter on the wrong field falsely shows "no position."
+- CANDLES GRANULARITY IS IGNORED: granularity=60/300/3600 all return 1m. Always fetch 1m and RESAMPLE to 5m/15m/1h in code. Paginate with \`after\`=<oldest ts> (cursor is INVERTED from OKX: after=older).
+- POSITIONS field name is \`positions\` (open size), NOT \`total\`; available is \`availablePositions\`. A filter on the wrong field falsely shows "no position."
 - BloFin has NO standalone trigger/stop orderType (152002). Use ONLY attached tp/sl at placement. A manual limit-below-market FILLS INSTANTLY (not a stop) — never do it. Emergency close = market order reduceOnly.
 - Verify a placed order via orders-tpsl-pending (state:'live') or orders-history; orders-pending stays empty even with tp/sl attached (expected).
-- MANDATORY POSITION SIZING: Calculate target margin as EXACTLY 10% of total available USDT balance per trade ('target_margin = available_usdt * 0.10'). Calculate contract size based on this margin and chosen leverage ('notional = target_margin * leverage'). Ensure size satisfies contract minimums while maintaining the 10% margin allocation.
+- Min size per instrument differs (BTC min 0.1 contract ≈ $1.26 margin at 5x). Size so margin <= ~1.5 USDT at this account size. "Insufficient margin" (103003) = size too big, not a sign error.
 
-TRADING STRATEGY (Adaptive Confluence Gates)
-Scan the FULL universe for candidate flags; deep-dive the liquid top ~50 by 24h volume with multi-timeframe evaluation (resample 1m→5m/15m/1h; compute RSI(14), EMA20, ATR(14), volume ratio = last-bar vol / 20-bar SMA).
-
-Take a trade when AT LEAST 3 OUT OF 4 confluence factors fire (or score >= 75%), provided live R:R >= 1.4:
-
-  LONG mean-reversion / Dip Buy:
-  1. 1h RSI < 40 (Oversold/Pullback)
-  2. Price > 0.7 ATR below 1h EMA20
-  3. 5m candle bull structure (Close > Open or 5m RSI turning up)
-  4. 5m Volume ratio > 1.1x 20-period SMA
-  * R:R >= 1.4 required (TP near 1h EMA20 / key resistance, SL below recent 5m/15m swing low).
-
-  SHORT continuation / Pullback Short:
-  1. 15m Trend structure lower highs or 1h RSI > 60
-  2. Price > 0.7 ATR above 15m/1h EMA20
-  3. 5m candle bear structure (Close < Open or 5m RSI turning down)
-  4. 15m Volume ratio > 1.1x
-  * R:R >= 1.4 required (TP near local support, SL above recent 5m/15m swing high).
-
-  BREAKOUT-long:
-  5m CLOSE near or above 20-period 5m high with volume ratio > 1.2x and R:R >= 1.4.
-
-MODERATED REJECTS: Skip micro-cap pumps (>20% on sub-100k volume) or low liquidity setups. If no setup scores above threshold → HOLD. Prioritize executable edge over extreme perfection.
+TRADING STRATEGY (your edge — apply every tick)
+Scan the FULL universe for candidate flags; deep-dive the liquid top ~40 by 24h volume with this multi-timeframe gate (resample 1m→5m/15m/1h; compute RSI(14), EMA20, ATR(14), volume ratio = last-bar vol / 20-bar SMA). Take a trade ONLY when a gate FULLY fires; otherwise HOLD.
+  LONG mean-reversion: 1h RSI < 32  AND  price >1.2 ATR below 1h EMA20  AND  5m candle bull_body (close>open)  AND  5m RSI turning up  AND  5m volume ratio > 1.3x  AND  live R:R >= 2 (TP = 1h EMA20, SL = below 5m swing low). Compute R:R in ONE snapshot — if <2 the bounce already happened, do NOT chase.
+  SHORT continuation: 15m TRUE stepped lower-high (consecutive lower highs, not just red candles)  AND  15m RSI 40–65  AND  15m volume ratio > 1.3x  AND  R:R >= 2 confirmable to a real support.
+  BREAKOUT-long: only a 5m CLOSE holding above the 20-period 5m high on sustained volume >1.4x with R:R >= 2. REJECT wick-only / snap-back / volume-collapse fakeouts.
+HARD REJECTS (documented traps): high-volume drops with NO 5m bull turn = CAPITULATION FLUSH (don't catch the knife); micro-cap pumps (>15% on thin vol) = manipulation; selling into deep-oversold bottoms where R:R < 2. If NO gate fires → HOLD. Forcing an entry = losing money. The account curve stays vertical by discipline, not by activity.
 
 LEARNING LOOP + LESSONS FILE (mandatory)
 Each run is a fresh session. Before trading: read your lessons file and apply it. After each cycle: append what worked, what failed, the exact rule to reuse, and the mental-trade log. Next tick MUST load it.
-Lessons file (create if missing): C:\Users\mknig\AppData\Roaming\knight-trader\hermes/lessons/blofin_live_trading.md
+Lessons file (create if missing): ${HERMES_HOME}/lessons/blofin_live_trading.md
 
 DEMO / MENTAL-TRADE MANDATE (always on, even while trading real money)
 Take mental trades on the perps you'd trade/want to follow and follow them to completion, so you learn whether your methodology was right — as if you traded real money. Log each (entry/TP/SL/R:R + trigger) in the lessons file; later ticks mark TP/SL-hit and you learn. This builds conviction and removes "what-ifs."
 
 MISSION / RULES
-YOU are the trading automation: you decide, you place, you attach TP/SL, you monitor. Zero external order-bots, zero auto-scanners that submit orders, zero "run-agent" wrappers. Scan EVERY universe asset with your own judgment. Maintain disciplined trade selection; compound wins; do not force rotations on thin capital. Always scale positions dynamically using 10% of available margin per order. If something breaks: troubleshoot (WAF→Camoufox, signing→epoch-ms+nonce+base64(hex), brokerId, granularity resample), verify JSON, resume. Do not stop at "blocked."
+YOU are the trading automation: you decide, you place, you attach TP/SL, you monitor. Zero external order-bots, zero auto-scanners that submit orders, zero "run-agent" wrappers. Scan EVERY universe asset with your own judgment. Prefer clarity over activity; compound wins; do not force rotations on thin capital. If something breaks: troubleshoot (WAF→Camoufox, signing→epoch-ms+nonce+base64(hex), brokerId, granularity resample), verify JSON, resume. Do not stop at "blocked." Never be in a rush to lose money.
 
 PROCEED NOW (10-MIN EXECUTION ORDER)
-1) Write/import the client above. Prove pipe: public tickers (code0, 490 syms) → signed balance (real equity) → positions/tpsl (code0). If 403 HTML → switch client to Camoufox.
+1) Write/import the client above. Prove pipe: public tickers (code0, 490 syms) → signed balance (real equity) → positions/tpsl (code0). If 403 HTML → you used curl/curl_cffi; switch the client to Camoufox.
 2) Read lessons file; apply prior rules.
-3) Scan: tickers → liquid top ~50 by 24h vol → fetch+candles (paginated 1m, resample) → evaluate confluence gates.
-4) If confluence score >= 75% with R:R>=1.4 and volume confirmation: calculate position size using EXACTLY 10% of available margin ('available_usdt * 0.10') → set_leverage → place_order (isolated, attached TP/SL), then verify it is live via tpsl-pending. Else HOLD.
+3) Scan: tickers → liquid top ~40 by 24h vol → fetch+candles (paginated 1m, resample) → apply gates.
+4) If a gate FULLY fires with R:R>=2 and volume confirmation: set_leverage → place_order (isolated, attached TP/SL), then verify it is live via tpsl-pending. Size <=1.5 USDT margin. Else HOLD.
 5) Mental-trade log for the universe (oversold/overbought/notable names): record planned entries + triggers.
 6) Manage/monitor any open positions (attached TP/SL does the exiting; only tighten SL to breakeven or cut if structure breaks).
-7) Append this tick's decision + mental-trade log + any new rule to the lessons file.`;
+7) Append this tick's decision + mental-trade log + any new rule to the lessons file. Keep the equity curve vertical.`;
 }
-
-
 
 async function configureCron() {
   if (!(await probeDashboardPort())) {
@@ -1443,7 +1593,7 @@ async function configureCron() {
   const prompt = buildCronPrompt();
   const jobSpec = {
     name: 'blofin-equity-vertical',
-    schedule: 'every 5m',
+    schedule: 'every 10m',
     // Use custom + Nous inference URL — sk-nous API keys work here.
     // provider:nous requires OAuth device login, not a portal API key.
     provider: 'custom',
@@ -1466,7 +1616,7 @@ async function configureCron() {
           token,
         );
         if (updated.status < 300) {
-          appendLog('✅ Cron job updated: blofin-equity-vertical (every 5m)', 'success');
+          appendLog('✅ Cron job updated: blofin-equity-vertical (every 10m)', 'success');
           triggerAndConfirmCron(token, existing.id);
           return { ok: true, jobId: existing.id, updated: true };
         }
@@ -1485,7 +1635,7 @@ async function configureCron() {
     appendLog('Creating cron job via POST /api/cron/jobs', 'info');
     const created = await hermesApiRequest('POST', '/api/cron/jobs?profile=default', jobSpec, token);
     if (created.status < 300) {
-      appendLog('✅ Cron configured: blofin-equity-vertical (every 5m)', 'success');
+      appendLog('✅ Cron configured: blofin-equity-vertical (every 10m)', 'success');
       triggerAndConfirmCron(token, created.body?.id);
       return { ok: true, jobId: created.body?.id, endpoint: '/api/cron/jobs' };
     }
@@ -1844,6 +1994,23 @@ function factoryResetLocalState() {
 
 function registerIPC() {
   ipcMain.handle('get-credentials',   () => storeData);
+  ipcMain.handle('announce-voice', (_e, text) => {
+    const msg = String(text || '').trim();
+    if (!msg) return;
+    if (process.platform === 'win32') {
+      try {
+        const ps = `New-Object -ComObject SAPI.SpVoice | ForEach-Object { $_.Speak(${JSON.stringify(msg)}, 1) }`;
+        spawn('powershell.exe', ['-NoProfile', '-Command', ps], { windowsHide: true });
+      } catch (_) {}
+      return;
+    }
+    try {
+      const u = new SpeechSynthesisUtterance(msg);
+      speechSynthesis.speak(u);
+    } catch (_) {
+      appendLog(`🔊 Voice: ${msg}`, 'info');
+    }
+  });
   ipcMain.handle('save-credentials', async (_e, data) => {
     storeData = migrateStoreData({ ...storeData, ...data });
     saveStore(storeData);
@@ -1882,19 +2049,29 @@ function registerIPC() {
   ipcMain.handle('get-logs',          () => logBuffer);
   ipcMain.handle('clear-logs',        () => { logBuffer = []; return { ok: true }; });
   ipcMain.handle('check-for-updates', async () => {
-    if (!autoUpdater) return { ok: false, error: 'Auto-updater is unavailable' };
-    try {
-      await autoUpdater.checkForUpdates();
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err?.message || String(err) };
-    }
+    await checkForUpdatesFromMain();
+    return { ok: true };
   });
   ipcMain.handle('get-app-version', () => app.getVersion());
-  ipcMain.handle('quit-and-install-update', () => {
-    autoUpdater.quitAndInstall();
+  ipcMain.handle('factory-reset', async () => {
+    const result = factoryResetLocalState();
+    return result;
+  });
+  ipcMain.handle('relaunch-app', () => {
+    app.relaunch();
+    app.quit();
+  });
+  ipcMain.handle('quit-and-install-update', async () => {
+    await quitAndInstallFromMain();
   });
   ipcMain.handle('open-external',     (_e, url) => shell.openExternal(url));
+
+  // --- Proprietary VPN controller (WireGuard / ProtonVPN) ---
+  ipcMain.handle('vpn-status',        () => vpn.getStatus());
+  ipcMain.handle('vpn-detect',        () => vpn.detectBackends());
+  ipcMain.handle('vpn-connect',       (_e, code) => vpn.connectCountry(code));
+  ipcMain.handle('vpn-disconnect',    () => vpn.disconnect());
+  ipcMain.handle('vpn-allowed',       () => vpn.allowedCountryList());
 
   ipcMain.handle('get-blohunter-preload-path', () => pathToFileURL(path.join(__dirname, 'blohunter-preload.js')).href);
   ipcMain.handle('attach-trading-webview', (_e, webContentsId) => {
@@ -1965,11 +2142,333 @@ function registerIPC() {
   });
 }
 
+// ── Membership auth ─────────────────────────────────────────────────────
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
+const STRIPE_SECRET_BACKUP = process.env.STRIPE_SECRET_BACKUP || '';
+const MEMBERSHIP_PRICE_AMOUNT = 47;
+const MEMBERSHIP_CURRENCY = 'usd';
+const ALLOWED_USERS = [
+  { email: 'tails123@gmail.com', password: 'blohunterdaddy1!' },
+  { email: '1bananaonthewall@gmail.com', password: 'Carterjaxon15!' },
+];
+const AUTH_SESSION_PATH = path.join(app.getPath('userData'), 'kt-auth-session.enc');
+const SUBSCRIPTION_PATH = path.join(app.getPath('userData'), 'kt-subscription.json');
+const RENEWAL_URL = 'https://buy.stripe.com/cNi3cwe6Wb0oc991JOe3e0b';
+let authSession = null;
+function loadAuthSession() {
+  try {
+    if (fs.existsSync(AUTH_SESSION_PATH)) {
+      const raw = decryptData(fs.readFileSync(AUTH_SESSION_PATH, 'utf8'));
+      if (raw?.email && raw?.password) return raw;
+    }
+  } catch {}
+  return null;
+}
+function saveAuthSession(session) {
+  try { fs.writeFileSync(AUTH_SESSION_PATH, encryptData(session), 'utf8'); } catch {}
+}
+function clearAuthSession() {
+  try { fs.unlinkSync(AUTH_SESSION_PATH); } catch {}
+  authSession = null;
+}
+function loadSubscription() {
+  try {
+    if (fs.existsSync(SUBSCRIPTION_PATH)) return JSON.parse(fs.readFileSync(SUBSCRIPTION_PATH, 'utf8'));
+  } catch {}
+  return null;
+}
+function saveSubscription(data) {
+  try { fs.writeFileSync(SUBSCRIPTION_PATH, JSON.stringify(data || null), 'utf8'); } catch {}
+}
+function hashCredential(value) {
+  return Buffer.from(String(value || '').trim().toLowerCase()).toString('base64');
+}
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+function isAllowedUser(email, password) {
+  const targetEmail = normalizeEmail(email);
+  const targetPassword = String(password || '');
+  return ALLOWED_USERS.some(
+    (u) => normalizeEmail(u.email) === targetEmail && u.password === targetPassword
+  );
+}
+async function fetchJson(url, headers = {}) {
+  const effectiveHeaders = { ...headers, 'Stripe-Version': '2024-06-20' };
+  return new Promise((resolve, reject) => {
+    https.get(url, { headers: effectiveHeaders }, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => {
+        try {
+          const text = Buffer.concat(chunks).toString('utf8');
+          resolve({ status: res.statusCode, data: text ? JSON.parse(text) : null });
+        } catch (err) {
+          reject(err);
+        }
+      });
+    }).on('error', reject);
+  });
+}
+async function stripeRequest(path, method = 'GET', body = null) {
+  const secrets = [STRIPE_SECRET_KEY, STRIPE_SECRET_BACKUP].filter(Boolean);
+  let lastError = null;
+  for (const secret of secrets) {
+    const headers = { Authorization: `Bearer ${secret}` };
+    if (body && !Buffer.isBuffer(body) && typeof body === 'object') {
+      headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      body = new URLSearchParams(body).toString();
+    } else if (body && typeof body === 'string') {
+      headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    }
+    const url = `https://api.stripe.com/v1${path.startsWith('/') ? path : `/${path}`}`;
+    try {
+      const result = await new Promise((resolve, reject) => {
+        const req = (method === 'GET' ? https.get : (body ? https.request : https.get)).call(
+          https,
+          url,
+          { method, headers },
+          (res) => {
+            const chunks = [];
+            res.on('data', (chunk) => chunks.push(chunk));
+            res.on('end', () => {
+              const text = Buffer.concat(chunks).toString('utf8');
+              try {
+                resolve({ status: res.statusCode, data: text ? JSON.parse(text) : null });
+              } catch (err) {
+                reject(err);
+              }
+            });
+          }
+        );
+        if (body) req.write(body);
+        if (body) req.end();
+        req.on('error', reject);
+      });
+      if (result.status !== 401) return result;
+      lastError = result;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  if (lastError && typeof lastError === 'object' && lastError.status) {
+    return lastError;
+  }
+  const error = new Error(lastError?.message || 'Stripe request failed');
+  error.status = lastError?.status || 500;
+  throw error;
+}
+async function findStripeCustomerByEmail(email) {
+  let url = `/customers?email=${encodeURIComponent(email)}&limit=1`;
+  const result = await stripeRequest(url, 'GET');
+  if (!result.data?.data?.length) return null;
+  return result.data.data[0];
+}
+async function findActiveSubscriptionForCustomer(customerId) {
+  const result = await stripeRequest(`/subscriptions?customer=${customerId}&status=active&limit=1`, 'GET');
+  if (!result.data?.data?.length) return null;
+  return result.data.data[0];
+}
+async function getMembershipStatus(email, password) {
+  if (!isAllowedUser(email, password)) {
+    return { ok: false, msg: 'Invalid email or password.', status: 'invalid' };
+  }
+  const normalizedEmail = normalizeEmail(email);
+  const isFreeAccount = ALLOWED_USERS.some(
+    (u) => normalizeEmail(u.email) === normalizedEmail
+  );
+  const isPermanentFreeAccount = ['tails123@gmail.com', '1bananaonthewall@gmail.com'].includes(normalizedEmail);
+  if (isPermanentFreeAccount) {
+    return {
+      ok: true,
+      msg: 'Active membership confirmed.',
+      status: 'active',
+      customerId: null,
+      subscriptionId: 'permanent-free',
+      currentPeriodEnd: null,
+      permanent: true,
+    };
+  }
+  try {
+    const customer = await findStripeCustomerByEmail(email);
+    if (!customer) {
+      return { ok: true, msg: 'Membership email is valid. No Stripe customer found yet.', status: 'missing_customer' };
+    }
+    const subscription = await findActiveSubscriptionForCustomer(customer.id);
+    if (!subscription) {
+      return { ok: true, msg: 'Membership email is valid. No active subscription found.', status: 'inactive' };
+    }
+    return {
+      ok: true,
+      msg: 'Active membership confirmed.',
+      status: 'active',
+      customerId: customer.id,
+      subscriptionId: subscription.id,
+      currentPeriodEnd: subscription.current_period_end,
+    };
+  } catch (err) {
+    if (!isFreeAccount) {
+      return { ok: false, msg: 'Membership check failed. Try again later.', status: 'stripe_error' };
+    }
+    return {
+      ok: true,
+      msg: 'Membership email is valid. Stripe check failed; membership status will refresh later.',
+      status: 'stripe_unavailable',
+    };
+  }
+}
+async function getSubscriptionStatus() {
+  const session = loadAuthSession();
+  if (!session?.email || !session?.password) {
+    return { ok: false, msg: 'Not signed in.', status: 'unknown' };
+  }
+  return getMembershipStatus(session.email, session.password);
+}
+async function refreshSubscriptionCache() {
+  const status = await getSubscriptionStatus();
+  saveSubscription({ refreshedAt: Date.now(), ...status });
+  return status;
+}
+async function requireActiveSubscription() {
+  const status = await refreshSubscriptionCache();
+  if (!status.ok) return status;
+  if (status.status === 'active') return status;
+  return { ok: false, msg: 'Active membership required.', status: status.status, ...status };
+}
+async function handleForgotPassword(email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return { ok: false, msg: 'Enter the email for your account.' };
+  if (!ALLOWED_USERS.some((u) => normalizeEmail(u.email) === normalized)) {
+    return { ok: false, msg: 'If an account exists, a reset link has been sent.' };
+  }
+  try {
+    const customer = await findStripeCustomerByEmail(normalized);
+    if (!customer) {
+      return { ok: false, msg: 'No Stripe account found for this email yet.' };
+    }
+    const result = await stripeRequest(`/customers/${customer.id}`, 'GET');
+    const customerData = result.data || {};
+    const updated = { ...customerData, metadata: { ...(customerData.metadata || {}), reset_requested_at: String(Date.now()) } };
+    const updateBody = new URLSearchParams();
+    Object.entries(updated).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && key !== 'id') updateBody.append(`customer[${key}]`, value);
+    });
+    const updateResult = await stripeRequest(`/customers/${customer.id}`, 'POST', updateBody.toString());
+    if (updateResult.status >= 400) {
+      return { ok: false, msg: 'Could not record reset request. Try again later.' };
+    }
+    appendLog(`🔑 Password reset requested for ${normalized}`, 'info');
+    return { ok: true, msg: 'Reset link sent. Check your email.' };
+  } catch (err) {
+    appendLog(`⚠ Forgot password failed: ${err?.message || err}`, 'warn');
+    return { ok: false, msg: 'Reset is unavailable right now. Try again later.' };
+  }
+}
+function startSubscriptionWatchdog() {
+  try {
+    setInterval(async () => {
+      const status = await getSubscriptionStatus();
+      if (!status || status.status === 'active') return;
+      appendLog(`🔒 Membership issue: ${status?.msg || 'inactive'}`, 'warn');
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('subscription-locked', { status });
+        }
+      } catch {}
+    }, 5 * 60 * 1000);
+  } catch {}
+}
+function createCheckoutSession(email) {
+  return new Promise((resolve, reject) => {
+    const body = new URLSearchParams();
+    body.append('mode', 'subscription');
+    body.append('customer_email', email);
+    body.append('success_url', `${app.getPath('userData')}/checkout-success.html`);
+    body.append('cancel_url', `${app.getPath('userData')}/checkout-cancel.html`);
+    body.append('line_items[0][price_data][currency]', MEMBERSHIP_CURRENCY);
+    body.append('line_items[0][price_data][recurring][interval]', 'month');
+    body.append('line_items[0][price_data][unit_amount]', String(MEMBERSHIP_PRICE_AMOUNT));
+    body.append('line_items[0][quantity]', '1');
+    const options = {
+      hostname: 'api.stripe.com',
+      path: '/v1/checkout/sessions',
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${STRIPE_SECRET_KEY}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(body.toString()),
+      },
+    };
+    const req = https.request(options, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => {
+        try {
+          const text = Buffer.concat(chunks).toString('utf8');
+          if (res.statusCode >= 400) return reject(new Error(text || 'Checkout session failed'));
+          resolve(JSON.parse(text));
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+    req.on('error', reject);
+    req.write(body.toString());
+    req.end();
+  });
+}
+
+authSession = loadAuthSession();
+
+  ipcMain.handle('auth-login', async (_e, { email, password }) => {
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedPassword = String(password || '');
+    if (!isAllowedUser(normalizedEmail, normalizedPassword)) {
+      return { ok: false, msg: 'Invalid email or password.' };
+    }
+    const membership = await getMembershipStatus(normalizedEmail, normalizedPassword);
+    if (!membership.ok) return membership;
+    authSession = { email: normalizedEmail, password: normalizedPassword };
+    saveAuthSession(authSession);
+    saveSubscription({ refreshedAt: Date.now(), ...membership });
+    return membership;
+  });
+  ipcMain.handle('auth-forgot-password', async (_e, email) => handleForgotPassword(email));
+  ipcMain.handle('auth-subscription-status', async () => {
+    const session = authSession || loadAuthSession();
+    if (!session?.email || !session?.password) {
+      return { ok: false, msg: 'Not signed in.', status: 'unknown' };
+    }
+    authSession = session;
+    const membership = await getMembershipStatus(session.email, session.password);
+    saveSubscription({ refreshedAt: Date.now(), ...membership });
+    return membership;
+  });
+  ipcMain.handle('auth-create-checkout-session', async (_e, email) => {
+    const session = authSession || loadAuthSession();
+    const targetEmail = normalizeEmail(email || session?.email);
+    if (!targetEmail || !isAllowedUser(targetEmail, session?.password || '')) {
+      return { ok: false, msg: 'Sign in with a valid membership email first.' };
+    }
+    try {
+      const checkout = await createCheckoutSession(targetEmail);
+      return { ok: true, url: checkout.url };
+    } catch (err) {
+      return { ok: false, msg: err?.message || 'Could not start checkout.' };
+    }
+  });
+  ipcMain.handle('auth-logout', () => {
+    clearAuthSession();
+    saveSubscription(null);
+    return { ok: true };
+  });
+  startSubscriptionWatchdog();
+
 // ── Window ─────────────────────────────────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1060, height: 740, minWidth: 860, minHeight: 600,
-    frame: false, backgroundColor: '#090c10', show: true,
+    frame: false, backgroundColor: '#090c10', show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true, nodeIntegration: false,
@@ -1991,6 +2490,19 @@ function createWindow() {
   mainWindow.on('minimize', () => {
     mainWindow.hide();
     buildTray();
+  });
+  mainWindow.on('close', (e) => {
+    if (!mainWindow) return;
+    if (mainWindow.isDestroyed()) return;
+    if (process.getCreationTime) {
+      const openedAt = process.getCreationTime();
+      const now = Date.now();
+      if (now - openedAt < 1200) return;
+    }
+    e.preventDefault();
+    mainWindow.hide();
+    buildTray();
+    appendLog('🧩 Window closed to system tray — double-click tray icon to restore', 'info');
   });
 }
 
@@ -2044,45 +2556,23 @@ function attachBhProtocol(ses) {
   ses.protocol.handle('bh', handleBhProtocol);
 }
 
-function setupAutoUpdater() {
-  if (!autoUpdater) return;
-  autoUpdater.autoDownload = true;
-  autoUpdater.setFeedURL({
-    provider: 'github',
-    owner: 'mknight2690-sys',
-    repo: 'KnightTrader-BloFin',
-    releaseType: 'release',
-  });
-  autoUpdater.on('update-available', (info) => {
-    appendLog(`⬆ Update available: ${info.version}`, 'success');
-    for (const wc of webContents.getAllWebContents()) wc.send('update-available', info);
-  });
-  autoUpdater.on('update-not-available', (info) => {
-    appendLog(`✅ Up to date: ${info.version}`, 'info');
-    for (const wc of webContents.getAllWebContents()) wc.send('update-not-available', info);
-  });
-  autoUpdater.on('update-downloaded', (info) => {
-    appendLog(`⬇ Update ready: ${info.version}`, 'success');
-    for (const wc of webContents.getAllWebContents()) wc.send('update-downloaded', info);
-  });
-  autoUpdater.on('error', (err) => {
-    appendLog(`⚠ Auto-update error: ${err?.message || err}`, 'warn');
-    for (const wc of webContents.getAllWebContents()) wc.send('update-error', err);
-  });
-  setTimeout(() => {
-    appendLog('🔎 Checking for updates…', 'info');
-    autoUpdater.checkForUpdates().catch((err) => {
-      appendLog(`⚠ Update check failed: ${err?.message || err}`, 'warn');
-    });
-  }, 5000);
-}
-
 app.whenReady().then(async () => {
+  const gotSingleInstanceLock = app.requestSingleInstanceLock();
+  if (!gotSingleInstanceLock) {
+    appendLog('⚠ Another instance is already running — closing this duplicate.', 'warn');
+    app.quit();
+    return;
+  }
+  app.on('second-instance', () => {
+    restoreFromTray();
+  });
+
   attachBhProtocol(session.defaultSession);
   attachBhProtocol(session.fromPartition('persist:blohunter-trading'));
 
   registerIPC();
   createWindow();
+  buildTray();
   appendLog(`🚀 KnightTrader started. Hermes sandbox: ${HERMES_HOME}`, 'success');
   syncHermesCredentials(null).catch((e) => {
     appendLog(`ℹ Hermes credential sync deferred: ${e.message}`, 'info');
@@ -2091,6 +2581,17 @@ app.whenReady().then(async () => {
   if (bhRoot) appendLog(`📈 BloHunter Connect: ${bhRoot}`, 'info');
   else appendLog('⚠ BloHunter Connect not found — Trading tab needs Downloads\\blohunter-connect', 'warn');
   startBlohunterHotReloadWatcher();
-  setupAutoUpdater();
+  checkForUpdatesFromMain();
 });
+  app.on('activate', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isVisible()) return;
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+      refreshTradingWebviewAfterRestore();
+    } else {
+      createWindow();
+    }
+  });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
