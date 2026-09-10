@@ -321,21 +321,57 @@
               <div class="step-num">6</div>
               <div class="step-body">
                 <div class="step-title">Create your Nous Portal API key</div>
-                <div class="step-desc">Hermes needs this key to think and trade. After you sign up for Nous Portal, add at least <strong>$5 in credits</strong>. Then create the API key and paste it into the app.</div>
-                <div class="step-desc"><strong>Click by click:</strong></div>
+                <div class="step-desc">Hermes needs this key to think and trade. The free plan gives you model access only — it does <strong>not</strong> include credits and you <strong>cannot</strong> create an API key on it. You must add at least <strong>$5 in credits</strong> first. After your credits are on the account, create the API key and paste it into the app.</div>
+                <div class="step-desc"><strong>Part A — Sign up for the $0 free plan:</strong></div>
                 <ol class="howto-list">
                   <li>Open <strong>portal.nousresearch.com/manage-subscription</strong>.</li>
-                  <li>If you are not signed in, click <strong>Login</strong>.</li>
+                  <li>If you are not signed in, click <strong>Login</strong> or <strong>Create Account</strong>.</li>
+                  <li>Enter your email and password, then verify your email if prompted.</li>
                   <li>Open <strong>Plans</strong> if it is not already selected.</li>
                   <li>Choose the <strong>Free $0</strong> plan.</li>
-                  <li>Click <strong>Subscribe</strong> if prompted.</li>
-                  <li>Wait until the plan shows as active.</li>
-                  <li>Open <strong>Account → API keys</strong> or the API keys section in the portal.</li>
-                  <li>Click <strong>Create new API key</strong>.</li>
-                  <li>Copy the key immediately.</li>
+                  <li>If prompted, click <strong>Subscribe</strong>.</li>
+                  <li>Wait until the plan shows as <strong>Free</strong> or <strong>active</strong>.</li>
+                </ol>
+                <div class="step-desc">You are now signed up and can log in, but you still have <strong>$0 in credits</strong> and you still cannot create an API key. Do not stop here.</div>
+                <div class="step-desc"><strong>Part B — Add at least $5 in credits (manual top-up):</strong></div>
+                <ol class="howto-list">
+                  <li>Stay logged in at <strong>portal.nousresearch.com</strong>.</li>
+                  <li>Open the account menu / top-right account area.</li>
+                  <li>Open <strong>Billing</strong>, <strong>Subscription</strong>, <strong>Credits</strong>, or <strong>Manage subscription</strong> — the exact label depends on what the portal shows now.</li>
+                  <li>Look for a section named <strong>Top up</strong>, <strong>Add credits</strong>, <strong>Buy credits</strong>, or <strong>Add funds</strong>.</li>
+                  <li>In the top-up area you will see preset buttons (for example <strong>+$10</strong>, <strong>+$20</strong>, <strong>+$50</strong>, <strong>+$100</strong>, <strong>+$200</strong>) and a field where you can type your own amount.</li>
+                  <li><strong>To top up exactly $5:</strong> type <strong>5</strong> (or <strong>5.00</strong>) into the custom amount field.</li>
+                  <li>Click the button that continues the checkout (often <strong>Continue</strong>, <strong>Next</strong>, or <strong>Pay</strong>).</li>
+                  <li>Confirm the amount and currency — it should say <strong>$5.00 USD</strong>.</li>
+                  <li>Complete the payment with <strong>Stripe</strong>. You will need a card or another Stripe-supported payment method.</li>
+                  <li>Wait for the payment to say <strong>successful</strong> or <strong>completed</strong>.</li>
+                  <li>After payment, go back to your account / billing area and check the <strong>credit balance</strong>.</li>
+                  <li>Confirm the balance now shows at least <strong>$5.00</strong> (it may show the exact top-up amount, plus any existing balance).</li>
+                  <li>If the balance still shows $0, <strong>reload the page</strong> or <strong>sign out and back in</strong>, then check again — the Stripe payment can take a moment to reflect.</li>
+                  <li>Once the balance is at least $5, the portal will let you create an API key.</li>
+                </ol>
+                <div class="step-desc"><strong>How to confirm the $5 actually landed:</strong> after the Stripe payment succeeds, the portal dashboard should show the new balance. If it does not, reload and wait a moment. If it still shows $0 after a refresh, re-sign in and check again. A working balance is what unlocks API key creation — not the subscription plan itself (you can also skip the subscription entirely and just top up credits, which creates a pay-as-you-go key at a lower rate limit).</div>
+                <div class="step-desc"><strong>Note:</strong> The free $0 plan does not come with credits. Signing up for free only gives you a login and access to free models — it does <strong>not</strong> give you a credit balance and does <strong>not</strong> let you create an API key. You must add at least $5 in credits (via a paid plan OR a manual Stripe top-up) before the API key option appears.</div>
+                <div class="step-desc">You only need to do this once. After the credits are on the account, you can create an API key and Hermes can use them.</div>
+                <div class="step-desc"><strong>Part C — Create the API key:</strong></div>
+                <ol class="howto-list">
+                  <li>On <strong>portal.nousresearch.com</strong>, open your account menu.</li>
+                  <li>Open <strong>Account → API keys</strong> or the <strong>API keys</strong> section shown in the portal.</li>
+                  <li>Click <strong>Create new API key</strong> or the equivalent button.</li>
+                  <li>If the portal asks for a name, type something simple like <strong>KT Hermes</strong>.</li>
+                  <li>If the portal asks which models or tools the key can use, leave the defaults unless you know you need something specific.</li>
+                  <li>Create the key.</li>
+                  <li><strong>Copy the full key immediately.</strong> If the portal shows a one-time copy screen, copy it now — you may not be able to see it again.</li>
                   <li>Paste it into the app <strong>Setup</strong> tab in <strong>AI Credentials → Portal API Key</strong>.</li>
                 </ol>
                 <div class="step-desc">After pasting, click <strong>Test AI Credentials</strong> in the app. If it says success, move on.</div>
+                <div class="step-desc"><strong>If the test fails:</strong></div>
+                <ol class="howto-list">
+                  <li>Confirm your credit balance is at least $5 in the portal.</li>
+                  <li>Confirm you copied the entire key, with no missing characters at the start or end.</li>
+                  <li>Confirm you created the key <strong>after</strong> adding credits, not before.</li>
+                  <li>Retry the test in the app once more.</li>
+                </ol>
               </div>
             </div>
 
