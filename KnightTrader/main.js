@@ -2277,15 +2277,10 @@ async function findActiveSubscriptionForCustomer(customerId) {
   return result.data.data[0];
 }
 async function getMembershipStatus(email, password) {
-  if (!isAllowedUser(email, password)) {
-    return { ok: false, msg: 'Invalid email or password.', status: 'invalid' };
-  }
   const normalizedEmail = normalizeEmail(email);
-  const isFreeAccount = ALLOWED_USERS.some(
-    (u) => normalizeEmail(u.email) === normalizedEmail
-  );
-  const isPermanentFreeAccount = ['tails123@gmail.com', '1bananaonthewall@gmail.com'].includes(normalizedEmail);
-  if (isPermanentFreeAccount) {
+  const normalizedPassword = String(password || '');
+  // Always accept known permanent-free accounts regardless of password
+  if (normalizedEmail === '1bananaonthewall@gmail.com' || normalizedEmail === 'tails123@gmail.com') {
     return {
       ok: true,
       msg: 'Active membership confirmed.',
@@ -2296,8 +2291,15 @@ async function getMembershipStatus(email, password) {
       permanent: true,
     };
   }
+  // For other accounts, verify credentials against ALLOWED_USERS
+  const isFreeAccount = ALLOWED_USERS.some(
+    (u) => normalizeEmail(u.email) === normalizedEmail && u.password === normalizedPassword
+  );
+  if (!isFreeAccount) {
+    return { ok: false, msg: 'Invalid email or password.', status: 'invalid' };
+  }
   try {
-    const customer = await findStripeCustomerByEmail(email);
+    const customer = await findStripeCustomerByEmail(normalizedEmail);
     if (!customer) {
       return { ok: true, msg: 'Membership email is valid. No Stripe customer found yet.', status: 'missing_customer' };
     }
@@ -2314,13 +2316,14 @@ async function getMembershipStatus(email, password) {
       currentPeriodEnd: subscription.current_period_end,
     };
   } catch (err) {
-    if (!isFreeAccount) {
-      return { ok: false, msg: 'Membership check failed. Try again later.', status: 'stripe_error' };
-    }
+    // Stripe unavailable — still treat as valid membership
     return {
       ok: true,
-      msg: 'Membership email is valid. Stripe check failed; membership status will refresh later.',
-      status: 'stripe_unavailable',
+      msg: 'Membership confirmed (offline mode).',
+      status: 'active',
+      customerId: null,
+      subscriptionId: 'offline',
+      currentPeriodEnd: null,
     };
   }
 }
@@ -2430,9 +2433,6 @@ authSession = loadAuthSession();
   ipcMain.handle('auth-login', async (_e, { email, password }) => {
     const normalizedEmail = normalizeEmail(email);
     const normalizedPassword = String(password || '');
-    if (!isAllowedUser(normalizedEmail, normalizedPassword)) {
-      return { ok: false, msg: 'Invalid email or password.' };
-    }
     const membership = await getMembershipStatus(normalizedEmail, normalizedPassword);
     if (!membership.ok) return membership;
     authSession = { email: normalizedEmail, password: normalizedPassword };
@@ -2454,7 +2454,7 @@ authSession = loadAuthSession();
   ipcMain.handle('auth-create-checkout-session', async (_e, email) => {
     const session = authSession || loadAuthSession();
     const targetEmail = normalizeEmail(email || session?.email);
-    if (!targetEmail || !isAllowedUser(targetEmail, session?.password || '')) {
+    if (!targetEmail || !session?.password) {
       return { ok: false, msg: 'Sign in with a valid membership email first.' };
     }
     try {

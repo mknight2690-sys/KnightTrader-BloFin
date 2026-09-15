@@ -308,9 +308,17 @@ async function populateNousModels() {
 }
 
 async function init() {
-  // Pre-fill permanent free account credentials
-  if (el.loginEmail) el.loginEmail.value = "1bananaonthewall@gmail.com";
-  if (el.loginPassword) el.loginPassword.value = "Carterjaxon15!";
+  // Restore previously saved auth session if available
+  if (el.loginOverlay && el.loginOverlay.classList.contains('hidden')) {
+    // Already signed in — nothing to pre-fill
+  } else if (el.loginEmail && el.loginPassword) {
+    // Try to auto-sign-in from saved session
+    const saved = window.kt?.getAuthSession?.() || null;
+    if (saved?.email) {
+      el.loginEmail.value = saved.email;
+      // Do NOT pre-fill password — user must re-enter
+    }
+  }
   if (el.loginOverlay && !el.loginOverlay.classList.contains('hidden')) {
     if (!(await requireAuth())) return;
   }
