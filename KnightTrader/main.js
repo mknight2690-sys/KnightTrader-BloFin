@@ -10,8 +10,8 @@ const http = require('http');
 const https = require('https');
 const os = require('os');
 
-const UPDATE_OWNER = '1bananaonthewall-ux';
-const UPDATE_REPO = '6-System-Trading-App';
+const UPDATE_OWNER = 'mknight2690-sys';
+const UPDATE_REPO = 'KnightTrader-BloFin';
 const UPDATE_RELEASE_API = `https://api.github.com/repos/${UPDATE_OWNER}/${UPDATE_REPO}/releases/latest`;
 let pendingUpdateRelease = null;
 
@@ -40,7 +40,7 @@ async function fetchLatestRelease() {
   const resp = await fetch(UPDATE_RELEASE_API, {
     headers: {
       Accept: 'application/vnd.github+json',
-      'User-Agent': '6-System-Trading-App',
+      'User-Agent': 'KnightTrader-BloFin',
     },
   });
   if (!resp.ok) throw new Error(`GitHub release check failed: ${resp.status} ${resp.statusText}`);
@@ -197,7 +197,7 @@ function getActiveDashboardPort() {
 }
 
 // ── Sandboxed Hermes paths (inside app userData — never system-wide) ────────
-// All Hermes files live under: <AppData>/Roaming/6-System-Trading/hermes/
+// All Hermes files live under: <AppData>/Roaming/KnightTrader-BloFin/hermes/
 // HERMES_HOME = that folder
 // InstallDir  = HERMES_HOME/hermes-agent   (git clone goes here)
 // venv hermes = InstallDir/venv/Scripts/hermes.exe (or .venv on some installs)
@@ -206,7 +206,7 @@ const HERMES_INSTALL = path.join(HERMES_HOME, 'hermes-agent');
 const HERMES_EXE     = path.join(HERMES_INSTALL, 'venv', 'Scripts', 'hermes.exe');
 
 // ── Encrypted credential store ─────────────────────────────────────────────
-const STORE_KEY  = Buffer.from('kt-aes256-key-6systemtrading-2024!'); // 32 bytes
+const STORE_KEY  = Buffer.from('kt-aes256-key-knighttrader-blofin-2024!'); // 32 bytes
 const STORE_PATH = path.join(app.getPath('userData'), 'kt-config.enc');
 
 function encryptData(obj) {
@@ -861,7 +861,7 @@ function findHermesExecutable() {
 }
 
 function writeHermesInstallLauncher() {
-  const launcherPath = path.join(os.tmpdir(), `6systemtrading-hermes-launcher-${process.pid}.ps1`);
+  const launcherPath = path.join(os.tmpdir(), `knighttrader-blofin-launcher-${process.pid}.ps1`);
   const script = [
     "$ErrorActionPreference = 'Stop'",
     `$HermesHome = ${psSingleQuote(HERMES_HOME)}`,
@@ -869,7 +869,7 @@ function writeHermesInstallLauncher() {
     '$env:HERMES_HOME = $HermesHome',
     '',
     "$installerUrl = 'https://hermes-agent.nousresearch.com/install.ps1'",
-    "$installerPath = Join-Path $env:TEMP '6systemtrading-hermes-install.ps1'",
+    "$installerPath = Join-Path $env:TEMP 'knighttrader-blofin-install.ps1'",
     '',
     "Write-Host 'Downloading Hermes installer...'",
     'try {',
@@ -2497,6 +2497,13 @@ function createWindow() {
   mainWindow.on('minimize', () => {
     mainWindow.hide();
     buildTray();
+    appendLog('🧩 Minimized to system tray — double-click tray icon to restore', 'info');
+  });
+  mainWindow.on('show', () => {
+    try {
+      mainWindow.focus();
+      mainWindow.webContents.send('kt-window-shown');
+    } catch (_) {}
   });
   mainWindow.on('close', (e) => {
     if (!mainWindow) return;
@@ -2589,7 +2596,7 @@ function forceKillExistingInstance() {
 forceKillExistingInstance();
 
 
-// ===== 6 System Trading System =====
+// ===== KnightTrader BloFin Trading System =====
 let tradingEngineProcess = null;
 let dashboardProcess = null;
 let tradingSystemStatus = { running: false, engine: false, dashboard: false };
@@ -2640,15 +2647,15 @@ async function startTradingSystem() {
       });
 
       dashboardProcess.on('error', (e) => {
-        appendLog('[Trading System] Dashboard error: ' + e.message, 'warn');
+        appendLog('[KT BloFin] Dashboard error: ' + e.message, 'warn');
       });
       dashboardProcess.on('exit', (code) => {
         if (code !== 0 && code !== null) {
-          appendLog('[Trading System] Dashboard exited with code ' + code, 'warn');
+          appendLog('[KT BloFin] Dashboard exited with code ' + code, 'warn');
         }
       });
       tradingSystemStatus.dashboard = true;
-      appendLog('[Trading System] Dashboard server starting...', 'info');
+      appendLog('[KT BloFin] Dashboard server starting...', 'info');
     }
 
     // Wait for dashboard to start
@@ -2665,24 +2672,24 @@ async function startTradingSystem() {
       });
 
       tradingEngineProcess.on('error', (e) => {
-        appendLog('[Trading System] Engine error: ' + e.message, 'warn');
+        appendLog('[KT BloFin] Engine error: ' + e.message, 'warn');
       });
       tradingEngineProcess.on('exit', (code) => {
         if (code !== 0 && code !== null) {
-          appendLog('[Trading System] Engine exited with code ' + code, 'warn');
+          appendLog('[KT BloFin] Engine exited with code ' + code, 'warn');
           tradingSystemStatus.engine = false;
           tradingSystemStatus.running = false;
         }
       });
       tradingSystemStatus.engine = true;
-      appendLog('[Trading System] Trading engine starting...', 'info');
+      appendLog('[KT BloFin] Trading engine starting...', 'info');
     }
 
     tradingSystemStatus.running = true;
-    appendLog('[Trading System] Trading system started. Dashboard at http://localhost:8000', 'success');
+    appendLog('[KT BloFin] Trading system started. Dashboard at http://127.0.0.1:8766', 'success');
     return { ok: true, pid: tradingEngineProcess?.pid, dashboardPid: dashboardProcess?.pid };
   } catch (e) {
-    appendLog('[Trading System] Start failed: ' + e.message, 'error');
+    appendLog('[KT BloFin] Start failed: ' + e.message, 'error');
     return { ok: false, error: e.message };
   }
 }
@@ -2703,10 +2710,10 @@ async function stopTradingSystem() {
       killed = true;
     }
     tradingSystemStatus = { running: false, engine: false, dashboard: false };
-    appendLog('[Trading System] Trading system stopped.', 'info');
+    appendLog('[KT BloFin] Trading system stopped.', 'info');
     return { ok: true, killed };
   } catch (e) {
-    appendLog('[Trading System] Stop failed: ' + e.message, 'warn');
+    appendLog('[KT BloFin] Stop failed: ' + e.message, 'warn');
     return { ok: false, error: e.message };
   }
 }
@@ -2714,15 +2721,14 @@ async function stopTradingSystem() {
 async function getTradingSystemStatus() {
   return {
     ...tradingSystemStatus,
-    dashboardUrl: tradingSystemStatus.dashboard ? 'http://localhost:8000' : null,
+    dashboardUrl: tradingSystemStatus.dashboard ? 'http://127.0.0.1:8766' : null,
   };
 }
 
 async function getTradingSystemTelemetry() {
   try {
-    const https = require('https');
     return await new Promise((resolve) => {
-      const req = https.get('http://127.0.0.1:8000/live', { timeout: 3000 }, (res) => {
+      const req = http.get('http://127.0.0.1:8766/live', { timeout: 3000 }, (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
@@ -2746,7 +2752,6 @@ function registerTradingSystemIPC() {
   ipcMain.handle('get-trading-system-telemetry', getTradingSystemTelemetry);
 }
 
-// Add to registerIPC:
   registerTradingSystemIPC();
 
 app.whenReady().then(async () => {
@@ -2775,7 +2780,7 @@ app.whenReady().then(async () => {
   else appendLog('⚠ BloHunter Connect not found — Trading tab needs Downloads\\blohunter-connect', 'warn');
   startBlohunterHotReloadWatcher();
   checkForUpdatesFromMain();
-});
+
   app.on('activate', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isVisible()) return;
@@ -2787,4 +2792,5 @@ app.whenReady().then(async () => {
       createWindow();
     }
   });
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

@@ -15,9 +15,9 @@ Start-Sleep -Seconds 5
 # Verify dashboard started
 $client = New-Object System.Net.WebClient
 try {
-    $response = $client.DownloadString("http://localhost:8000/health")
+    $response = $client.DownloadString("http://localhost:8766/health")
     if ($response -like "*ok*") {
-        Write-Host "Dashboard running on http://localhost:8000"
+        Write-Host "Dashboard running on http://localhost:8766"
     } else {
         Write-Host "WARNING: Dashboard not responding"
     }
@@ -26,7 +26,7 @@ try {
 }
 
 # Open Chrome to dashboard
-Start-Process chrome.exe -ArgumentList "--new-window --user-data-dir=C:\Temp\chrome_trading --no-first-run http://localhost:8000"
+Start-Process chrome.exe -ArgumentList "--new-window --user-data-dir=C:\Temp\chrome_trading --no-first-run http://localhost:8766"
 
 Write-Host "Trading system launched."
-Write-Host "Dashboard: http://localhost:8000"
+Write-Host "Dashboard: http://localhost:8766"

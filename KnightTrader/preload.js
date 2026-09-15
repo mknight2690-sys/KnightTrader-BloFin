@@ -53,7 +53,7 @@ contextBridge.exposeInMainWorld('kt', {
   attachTradingWebview: (webContentsId) => ipcRenderer.invoke('attach-trading-webview', webContentsId),
 
   
-  // 6 System Trading System
+  // KnightTrader BloFin System
   startTradingSystem: () => ipcRenderer.invoke('start-trading-system'),
   stopTradingSystem: () => ipcRenderer.invoke('stop-trading-system'),
   getTradingSystemStatus: () => ipcRenderer.invoke('get-trading-system-status'),

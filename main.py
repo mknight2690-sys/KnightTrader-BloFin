@@ -70,6 +70,8 @@ async def main():
         while not _shutdown:
             await asyncio.sleep(cycle_interval)
             await engine.run_system_pipeline(config['trading']['symbol'], history_df)
+            # Sync TP/SL for all open positions — ensures 1 TP + 1 SL per position
+            await engine.sync_positions_tp_sl(config['trading']['symbol'], history_df)
 
         logging.info("Trading engine stopped gracefully.")
 

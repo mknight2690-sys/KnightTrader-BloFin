@@ -1,4 +1,4 @@
-/* 6 System Trading System - renderer module
+/* KnightTrader BloFin System - renderer module
    Manages Python trading engine + dashboard server lifecycle
 */
 
@@ -6,6 +6,7 @@ let tradingSystemProcess = null;
 let dashboardProcess = null;
 let tradingSystemStarted = false;
 let telemetryInterval = null;
+let telemetryCallback = null;
 
 async function startTradingSystem() {
   try {
@@ -13,6 +14,7 @@ async function startTradingSystem() {
     if (result?.ok) {
       tradingSystemStarted = true;
       tradingSystemProcess = result.pid;
+      dashboardProcess = result.dashboardPid;
       startTelemetryPolling();
     }
     return result;
@@ -52,13 +54,17 @@ async function getTradingSystemTelemetry() {
   }
 }
 
+function setTelemetryCallback(cb) {
+  telemetryCallback = cb;
+}
+
 function startTelemetryPolling() {
   stopTelemetryPolling();
   telemetryInterval = setInterval(async () => {
     try {
       const tel = await getTradingSystemTelemetry();
-      if (tel && window.kt?.onTradingSystemTelemetry) {
-        window.kt.onTradingSystemTelemetry(tel);
+      if (tel && telemetryCallback) {
+        telemetryCallback(tel);
       }
     } catch (_) {}
   }, 2000);
@@ -81,6 +87,13 @@ window.addEventListener('beforeunload', () => {
 });
 
 // Expose for app.js
-if (window.kt) {
-  // Will be bridged via preload
-}
+window.tradingSystem = {
+  startTradingSystem,
+  stopTradingSystem,
+  getTradingSystemStatus,
+  getTradingSystemTelemetry,
+  setTelemetryCallback,
+  startTelemetryPolling,
+  stopTelemetryPolling,
+  isTradingSystemStarted,
+};

@@ -1,4 +1,4 @@
-/* ── KnightTrader Blofin App Logic v2 ─────────────────────────────── */
+/* ── KnightTrader BloFin App Logic v2 ─────────────────────────────── */
 
 let currentTab = 'howto';
 let autoScroll = true;
@@ -59,6 +59,10 @@ const el = {
   tradingWebview: $('trading-webview'),
   tradingWebviewWrap: $('trading-webview-wrap'),
   btnReloadTrading: $('btn-reload-trading'),
+  btnStartTrading: $('btn-start-trading'),
+  btnStopTrading: $('btn-stop-trading'),
+  tradingSystemDashboard: $('trading-system-dashboard'),
+  tradingSystemWebview: $('trading-system-webview'),
 
   // Sidebar / updates
   sidebarVersion: $('sidebar-version'),
@@ -125,23 +129,33 @@ function showForgotForm() {
 function hideLoginOverlay() {
   if (el.loginOverlay) el.loginOverlay.classList.add('hidden');
 }
-const PERMANENT_FREE_EMAIL = '1bananaonthewall@gmail.com';
-const PERMANENT_FREE_PASSWORD = 'Carterjaxon15!';
 
+
+
+async function autoLoginFromSession() {
+  try {
+    const currentStatus = await window.kt.authSubscriptionStatus();
+    if (currentStatus?.status === 'active') {
+      authReady = true;
+      hideLoginOverlay();
+      return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
+// Legacy stub (kept for compatibility)
 async function autoSignInPermanent() {
   try {
     const currentStatus = await window.kt.authSubscriptionStatus();
     if (currentStatus?.status === 'active') return true;
     const result = await window.kt.authLogin({
-      email: PERMANENT_FREE_EMAIL,
-      password: PERMANENT_FREE_PASSWORD,
-    });
     if (result?.ok && ['active','missing_customer','inactive','stripe_unavailable'].includes(result.status)) {
       authReady = true;
       hideLoginOverlay();
       return true;
     }
-  } catch (e) { console.error('[autoSignInPermanent]', e); }
+  } catch (e) {  }
   return false;
 }
 
@@ -155,7 +169,7 @@ async function requireAuth() {
     }
   } catch {}
   // Try auto-sign-in with permanent free account
-  const signedIn = await autoSignInPermanent();
+  const signedIn = await autoLoginFromSession();
   if (signedIn) return true;
   authReady = false;
   showLoginForm();
@@ -301,7 +315,7 @@ async function init() {
     if (!(await requireAuth())) return;
   }
   // Backup: force auto-sign-in even if requireAuth missed it
-  setTimeout(() => autoSignInPermanent(), 1500);
+  setTimeout(() => autoLoginFromSession(), 1500);
   await populateNousModels();
   // Detect whether the preload bridge actually reached the renderer.
   if (!window.kt) {
@@ -322,7 +336,7 @@ async function init() {
       cachedAppVersion = normalized;
     }
     if (el.sidebarVersion) el.sidebarVersion.textContent = label;
-    if (el.aboutAppVersion) el.aboutAppVersion.textContent = `KnightTrader Blofin ${label}`;
+    if (el.aboutAppVersion) el.aboutAppVersion.textContent = `KnightTrader BloFin ${label}`;
   } catch (e) {}
 
   // Load creds
@@ -791,7 +805,7 @@ async function initTradingTab() {
       await loadTradingDesk(false);
       if (!tradingFirstLoadWelcomed) {
         tradingFirstLoadWelcomed = true;
-        window.kt?.announceVoice?.('Welcome to KnightTrader Blofin').catch(() => {});
+        window.kt?.announceVoice?.('Welcome to KnightTrader BloFin').catch(() => {});
       }
     } catch (_) {}
     finally { tradingInitPromise = null; }
@@ -847,7 +861,7 @@ if (el.btnStartTrading) {
         if (el.tradingEngineStatus) { el.tradingEngineStatus.textContent = 'Active'; el.tradingEngineStatus.className = 'monitor-value ok'; }
         if (el.tradingDashboardStatusText) { el.tradingDashboardStatusText.textContent = 'Active'; el.tradingDashboardStatusText.className = 'monitor-value ok'; }
         if (el.tradingSystemDashboard) { el.tradingSystemDashboard.style.display = ''; }
-        if (el.tradingSystemWebview) { el.tradingSystemWebview.src = 'http://localhost:8000'; }
+        if (el.tradingSystemWebview) { el.tradingSystemWebview.src = 'http://127.0.0.1:8766'; }
         appendLog('[Trading] Trading system started', 'success');
       } else {
         setTradingStatus('Start failed', 'error');
@@ -1254,7 +1268,7 @@ function buildPopupMenu() {
     </div>
     <div class="popup-menu-item popup-menu-item-disabled" aria-disabled="true">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-      <span>v<span id="popup-app-version">${currentVersion || '1.1.17'}</span></span>
+      <span>v<span id="popup-app-version">${currentVersion || '1.2.0'}</span></span>
     </div>
     <div class="popup-menu-item popup-menu-item-disabled" aria-disabled="true">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -1521,12 +1535,12 @@ if (el.navItems) {
     await init();
   } catch (e) {
     // Make sure the user sees a fatal error instead of a dead UI.
-    console.error('[KnightTrader Blofin] init failed:', e);
+    console.error('[KnightTrader BloFin] init failed:', e);
     try {
       if (document.body) {
         const bail = document.createElement('pre');
         bail.style.cssText = 'position:fixed;inset:0;background:#0b0d10;color:#ff7b72;font:14px/1.4 monospace;padding:12px;overflow:auto;z-index:9999';
-        bail.textContent = `[KnightTrader Blofin] init failed:\n${e && (e.stack || e)}`;
+        bail.textContent = `[KnightTrader BloFin] init failed:\n${e && (e.stack || e)}`;
         document.body.appendChild(bail);
       }
     } catch {}
