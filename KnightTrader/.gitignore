@@ -5,3 +5,4 @@ KnightTraderdistasar_extract/
 *.log
 __pycache__/
 .pytest_cache/
+python/router/keys_*.txt
