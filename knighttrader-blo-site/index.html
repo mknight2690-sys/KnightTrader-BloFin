@@ -3,230 +3,170 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>KnightTrader BloFin — Local Autonomous Trading Assistant</title>
+  <title>KnightTrader BloFin — AI Agent in a Box for BloFin Perpetuals</title>
+  <meta name="description" content="The AI agent trades your BloFin account 24/7. Subscribe $47/month, authorize once, never place a manual order. Local-first. Your keys stay on your PC." />
   <link rel="stylesheet" href="styles.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
-  <header class="site-header">
-    <div class="container">
-      <div class="logo">
-        <span class="logo-mark">KT</span>
-        <span class="logo-text">KnightTrader</span>
-        <span class="logo-badge">BloFin</span>
+  <div id="login-overlay" class="login-overlay hidden">
+    <div class="login-card">
+      <div class="login-header">
+        <div class="login-logo">KT</div>
+        <div><div class="login-title">KnightTrader BloFin</div><div class="login-subtitle">Sign in to download</div></div>
       </div>
-      <nav class="site-nav">
-        <a href="#what">What it is</a>
-        <a href="#download">Download</a>
-        <a href="#getting">Get started</a>
-        <a href="#faq">FAQ</a>
-      </nav>
+      <form id="form-login" class="login-form" novalidate>
+        <div class="field"><label for="login-email">Email</label><input type="email" id="login-email" placeholder="you@example.com" autocomplete="email" required /></div>
+        <div class="field"><label for="login-password">Password</label><input type="password" id="login-password" placeholder="Password" autocomplete="current-password" required /></div>
+        <div id="login-error" class="login-error" role="alert" aria-live="polite"></div>
+        <button type="submit" id="btn-login" class="btn-primary btn-block">Sign in</button>
+        <button type="button" id="btn-forgot" class="btn-link">Forgot password?</button>
+      </form>
+      <form id="form-forgot" class="login-form hidden" novalidate>
+        <div class="field"><label for="forgot-email">Account email</label><input type="email" id="forgot-email" placeholder="you@example.com" autocomplete="email" required /></div>
+        <div id="forgot-error" class="login-error" role="alert" aria-live="polite"></div>
+        <div id="forgot-success" class="login-success" role="status" aria-live="polite"></div>
+        <button type="submit" id="btn-forgot-send" class="btn-primary btn-block">Send reset link</button>
+        <button type="button" id="btn-forgot-back" class="btn-link">Back to sign in</button>
+      </form>
+      <div class="login-footer">Requires active $47/mo membership. <a href="#join">Join now</a></div>
+    </div>
+  </div>
+  <div id="confirmation-overlay" class="login-overlay hidden">
+    <div class="login-card">
+      <div class="login-header">
+        <div class="login-logo">KT</div>
+        <div><div class="login-title">Payment processing</div><div class="login-subtitle">Confirming your subscription...</div></div>
+      </div>
+      <div class="confirmation-body">
+        <div class="loading-spinner"></div>
+        <p id="confirmation-message">Waiting for Stripe to confirm your $47/mo subscription.</p>
+        <p class="confirmation-hint">Your payment is safe.</p>
+      </div>
+    </div>
+  </div>
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="logo"><span class="logo-mark">KT</span><span class="logo-text">KnightTrader</span><span class="logo-badge">BloFin</span></div>
+      <nav class="site-nav"><a href="#what">What it is</a><a href="#join">Subscribe</a><a href="#download-section">Download</a><a href="#faq">FAQ</a></nav>
+      <button id="btn-header-login" class="btn-secondary btn-sm">Sign in</button>
     </div>
   </header>
-
   <main>
-    <section class="hero">
-      <div class="container">
-        <h1>KnightTrader BloFin</h1>
-        <p class="hero-sub">Local Autonomous Trading Assistant</p>
+    <section class="hero"><div class="container">
+      <span class="hero-badge">Local desktop app - No trading experience required</span>
+      <h1>The AI agent trades your BloFin account - 24/7</h1>
+      <p class="hero-sub">Subscribe $47/month via Stripe, download once, authorize your BloFin API once. You never place a manual order. The agent executes on a preset prompt designed to get out-of-the-box profitability. Your keys stay on your PC.</p>
+      <div class="hero-actions"><a href="#join" class="btn-primary btn-lg">Join membership - $47/month</a></div>
+      <div class="hero-trust"><span>Local-first. API keys never leave your PC.</span><span>30-60 min setup</span><span>Cancel anytime</span></div>
+    </div></section>
+    <section class="risk-banner"><div class="container">
+      <strong>Read this before you spend any money:</strong> KnightTrader BloFin trades <strong>perpetual futures</strong> - leveraged derivatives. You can lose some, most, or all of the money in your BloFin account. The bot currently ships with <strong>no position cap, no daily-loss cap, no leverage cap, and no drawdown cap.</strong> Past performance is not a guarantee of future results. <strong>Do not fund your BloFin account with money you cannot afford to lose in full.</strong>
+    </div></section>
+    <section class="section"><div class="container">
+      <h2>If you have a debit card and a computer, this is for you.</h2>
+      <p class="section-sub">You do not need to know what an API key is, what a futures contract is, or what leverage means. The in-app How-To tab explains every step in plain English.</p>
+      <div class="audience-grid">
+        <div class="audience-card"><div class="audience-icon">&#x1F9ED;</div><h3>Never bought crypto before</h3><p>The How-To tab starts with how to buy USDC with your debit card on Coinbase, send it to BloFin, and create the API key.</p></div>
+        <div class="audience-card"><div class="audience-icon">&#x26A1;</div><h3>Started setting up a bot and gave up</h3><p>Most people stop at step three. We remove those steps with one-click installers on both Windows and Mac.</p></div>
+        <div class="audience-card"><div class="audience-icon">&#x1F510;</div><h3>Don't want a hosted bot</h3><p>The app, the assistant, and the API keys live on your computer. You can read every log line, pause the bot, or delete it without asking anyone.</p></div>
       </div>
-    </section>
-
-    <section class="section">
-      <div class="container">
-        <div class="audience-cards">
-          <div class="audience-card">
-            <div class="audience-icon">🧭</div>
-            <h3>New to crypto or trading agents</h3>
-            <p>You do not need to make trading decisions. Install, open the How-To tab, and follow the steps. After setup, it can autonomously trade your account on your behalf.</p>
-          </div>
-          <div class="audience-card">
-            <div class="audience-icon">⚡</div>
-            <h3>Experienced traders and bot users</h3>
-            <p>You keep full visibility into logs, prompts, and local state. This is not a black-box hosted service. Inspect behavior, adjust strategy notes, and review outcomes.</p>
-          </div>
-          <div class="audience-card">
-            <div class="audience-icon">🔐</div>
-            <h3>Local-first operation</h3>
-            <p>Credentials stay on your machine. The agent runs locally. Use a VPN as required by your setup/region.</p>
-          </div>
+    </div></section>
+    <section id="what" class="section section-alt"><div class="container">
+      <h2>What it actually does, in plain English</h2>
+      <div class="steps-list">
+        <div class="step-item"><div class="step-num">1</div><div><h3>You fund a BloFin account</h3><p>Open a BloFin account, buy crypto with your debit card on Coinbase, send it to BloFin.</p></div></div>
+        <div class="step-item"><div class="step-num">2</div><div><h3>You create a BloFin API key</h3><p>An API key lets the app place trades on your behalf. The How-To tab shows exactly which boxes to tick.</p></div></div>
+        <div class="step-item"><div class="step-num">3</div><div><h3>The app installs the assistant</h3><p>Click Install Hermes. The app downloads the assistant, writes your keys into its sandbox, and registers a scheduled task.</p></div></div>
+        <div class="step-item"><div class="step-num">4</div><div><h3>The assistant runs on a schedule</h3><p>Every few minutes it checks your account and the market, asks its AI model whether to act, and either does nothing or places a small order.</p></div></div>
+        <div class="step-item"><div class="step-num">5</div><div><h3>You keep the kill switch</h3><p>You can hit Stop in the app, close it, or uninstall it. The bot stops within seconds. Your money never leaves BloFin.</p></div></div>
+      </div>
+    </div></section>
+    <section class="section"><div class="container">
+      <h2>What it does not do</h2>
+      <div class="not-list">
+        <div class="not-item"><span class="not-icon">&#x2717;</span><div><strong>It does not guarantee profit.</strong> Perpetual futures are risky. The bot has no built-in loss cap.</div></div>
+        <div class="not-item"><span class="not-icon">&#x2717;</span><div><strong>It does not hold your money.</strong> Your funds stay on BloFin. The app never sees your debit card.</div></div>
+        <div class="not-item"><span class="not-icon">&#x2717;</span><div><strong>It is not set and forget.</strong> Check the dashboard and logs. The bot can and will place losing trades.</div></div>
+        <div class="not-item"><span class="not-icon">&#x2717;</span><div><strong>It does not work on a closed laptop lid.</strong> The bot needs your computer awake and online.</div></div>
+      </div>
+    </div></section>
+    <section id="join" class="section section-accent"><div class="container">
+      <h2>Subscribe - $47 / month</h2>
+      <p class="section-sub">Pay via Stripe. After payment, return here to download and sign in with the same email and password.</p>
+      <div class="join-grid">
+        <div class="join-card">
+          <div class="join-card-header"><span class="badge badge-primary">New member</span><h3>Join membership</h3></div>
+          <form id="form-checkout" class="join-form" novalidate>
+            <div class="field"><label for="checkout-email">Email <span class="field-hint">(you will log in to the app with it)</span></label><input type="email" id="checkout-email" placeholder="you@example.com" autocomplete="email" required /></div>
+            <div class="field"><label for="checkout-password">Password <span class="field-hint">(remember this for the app login)</span></label><input type="password" id="checkout-password" placeholder="Create a password" autocomplete="new-password" minlength="8" required /></div>
+            <div id="checkout-error" class="login-error" role="alert" aria-live="polite"></div>
+            <button type="submit" id="btn-checkout" class="btn-primary btn-block btn-lg">Pay $47 / Month via Stripe</button>
+            <p class="secure-note">Secured by Stripe. Cancel anytime.</p>
+          </form>
+        </div>
+        <div class="join-card join-card-secondary">
+          <div class="join-card-header"><span class="badge">Free</span><h3>Free download</h3></div>
+          <p>Install the app, read the How-To, and create your API key. The agent will not trade until your membership is active.</p>
+          <div class="free-features"><div>Read-only How-To tab</div><div>No agent trading</div><div>No app updates</div><div>No membership sync</div></div>
+          <a href="https://github.com/mknight2690-sys/KnightTrader-BloFin/releases/latest" class="btn-secondary btn-block btn-lg">Download free (no membership)</a>
         </div>
       </div>
-    </section>
-
-    <section id="what" class="section">
-      <div class="container">
-        <h2>What is Hermes?</h2>
-        <p>Hermes is the local AI runtime on your machine. In this setup, it becomes an autonomous trader on BloFin.</p>
-        <p>If you are new to AI agents, think of it as a local system that can review, decide, and act on your behalf. If you have used agents or automation before, think of it as a configurable local runtime with persistent memory and scheduled execution.</p>
-        <p>It is not a hosted bot you cannot inspect. It runs on your computer, keeps your credentials local, and trades your account directly through the Hermes dashboard.</p>
+      <div class="comparison-table">
+        <table><thead><tr><th></th><th>Free (download only)</th><th>Subscribe $47/mo</th></tr></thead>
+        <tbody>
+          <tr><td>AI agent trades</td><td>Not active</td><td>Active 24/7</td></tr>
+          <tr><td>How-To / setup help</td><td>Read only</td><td>Guided click-by-click</td></tr>
+          <tr><td>App updates</td><td>None</td><td>Free updates</td></tr>
+          <tr><td>Account / credentials</td><td>Local only</td><td>Remembered for re-login</td></tr>
+          <tr><td>Cancel anytime</td><td>N/A</td><td>Stripe dashboard</td></tr>
+        </tbody></table>
       </div>
-    </section>
-
-    <section class="section">
-      <div class="container">
-        <h2>What you are getting</h2>
-        <ul class="feature-list">
-          <li>A local trading assistant that runs every 5 minutes.</li>
-          <li>Continuous operation while your PC is awake and online.</li>
-          <li>Use a VPN as required, with no ongoing manual decisions or extra headaches.</li>
-          <li>A simple How-To tab inside the app.</li>
-          <li>A local dashboard and logs you can watch.</li>
-          <li>Persistent memory and strategy refinement across runs.</li>
-          <li>One-time setup, not a subscription or hosted service.</li>
-        </ul>
+    </div></section>
+    <section id="download-section" class="section section-alt"><div class="container">
+      <h2>Download KnightTrader BloFin</h2>
+      <p class="section-sub" id="download-status-text">Sign in with your membership email to unlock downloads.</p>
+      <div class="download-platforms">
+        <div class="download-card"><div class="download-icon">&#x1FA9F;</div><h3>Windows</h3><p>Windows 11 or later. Run the installer, accept the prompts.</p><button id="btn-download-windows" class="btn-primary btn-block" disabled>Download for Windows</button></div>
+        <div class="download-card"><div class="download-icon">&#x1F34E;</div><h3>macOS</h3><p>macOS 11 (Big Sur) or later. Open the .dmg, drag to Applications.</p><button id="btn-download-mac" class="btn-primary btn-block" disabled>Download for Mac</button></div>
       </div>
-    </section>
-
-    <section id="download" class="section">
-      <div class="container">
-        <h2>Download</h2>
-        <div class="platform-selector">
-          <button class="platform-btn active" data-platform="windows">Windows</button>
-          <button class="platform-btn" data-platform="mac">Mac</button>
-        </div>
-
-        <div class="download-block">
-          <div class="download-col">
-            <strong>Windows</strong>
-            <p>Download the Windows installer directly. Run it, then open the How-To tab to finish setup.</p>
-          </div>
-          <div class="download-col">
-            <strong>Mac</strong>
-            <p>Download the Mac `.dmg` directly. Open it and drag the app into your Applications folder.</p>
-          </div>
-        </div>
-
-        <div class="download-actions">
-          <button type="button" class="btn-primary" id="btn-download-windows">Download for Windows</button>
-          <button type="button" class="btn-primary hidden" id="btn-download-mac">Download for Mac</button>
-          <p class="download-note" id="download-note">Windows installer downloads immediately.</p>
-          <p class="download-fallback"><a id="release-page-link" href="https://github.com/mknight2690-sys/KnightTrader-BloFin/releases/latest" target="_blank" rel="noopener noreferrer">Open release page</a></p>
-        </div>
-
-        <p class="download-after">After install, open the How-To tab inside the app. It includes guidance for Hermes setup, API keys, first-time configuration, and keeping your computer awake.</p>
+      <div class="download-note" id="download-note"></div>
+      <p class="release-link"><a href="https://github.com/mknight2690-sys/KnightTrader-BloFin/releases" target="_blank" rel="noopener noreferrer">Browse all releases on GitHub</a></p>
+    </div></section>
+    <section class="section"><div class="container">
+      <h2>What is inside the app</h2>
+      <div class="features-grid">
+        <div class="feature-card"><div class="feature-icon">&#x1F4D6;</div><h3>Beginner How-To tab</h3><p>Walks you through buying USDC, sending it to BloFin, creating your API key, and getting a Nous Portal key.</p></div>
+        <div class="feature-card"><div class="feature-icon">&#x1F4CA;</div><h3>Local dashboard + logs</h3><p>Every decision is written to a log on your PC. The Trading tab shows open positions and equity in real time.</p></div>
+        <div class="feature-card"><div class="feature-icon">&#x1F510;</div><h3>Local credential storage</h3><p>API keys are encrypted on your PC. Never sent anywhere except to BloFin directly.</p></div>
+        <div class="feature-card"><div class="feature-icon">&#x1F504;</div><h3>Free app updates</h3><p>You get every new feature and bug fix as long as your $47/mo membership is active.</p></div>
+        <div class="feature-card"><div class="feature-icon">&#x1F464;</div><h3>Membership sync</h3><p>The app signs you in with the same email you used on Stripe.</p></div>
+        <div class="feature-card"><div class="feature-icon">&#x1F50F;</div><h3>Local-first privacy</h3><p>The app, the assistant, and your API keys live on your PC. Nothing is uploaded to us.</p></div>
       </div>
-    </section>
-
-    <section class="section">
-      <div class="container">
-        <div class="badges">
-          <span class="badge">Local-first</span>
-          <span class="badge">Inspectable</span>
-          <span class="badge">VPN-aware workflow</span>
-          <span class="badge">Persistent memory</span>
-          <span class="badge">Beginner guided setup</span>
-        </div>
+    </div></section>
+    <section id="faq" class="section"><div class="container">
+      <h2>Questions beginners actually ask</h2>
+      <div class="faq-list">
+        <details><summary>Does this work on a Mac?</summary><p>Yes. KnightTrader BloFin ships a signed .dmg for macOS 11 (Big Sur) and newer on both Intel and Apple Silicon.</p></details>
+        <details><summary>I have never bought crypto before. Can I still use this?</summary><p>Yes. That is exactly who this is built for. The How-To tab walks you through every step.</p></details>
+        <details><summary>I only have a debit card. Can I still fund this?</summary><p>Yes. Buy USDC on Coinbase with your debit card, then withdraw it to your BloFin account.</p></details>
+        <details><summary>Do I need a VPN?</summary><p>Maybe. BloFin restricts some jurisdictions. The How-To tab includes a free ProtonVPN routine if you need one.</p></details>
+        <details><summary>Do I have to place trades myself?</summary><p>No. After setup, the assistant places and closes trades on schedule. You can stop the bot from the app anytime.</p></details>
+        <details><summary>Where do my API keys go?</summary><p>They stay on your machine. They are never sent to us or anyone else.</p></details>
+        <details><summary>Is my money ever in your hands?</summary><p>No. Your USDC sits in your own BloFin account. The app only holds API keys.</p></details>
+        <details><summary>Why does it cost $47/month?</summary><p>A custom trading bot costs $5,000-$150,000 plus 15-20%/year maintenance. $47/month covers the membership, server time, ongoing fixes, and beginner support.</p></details>
+        <details><summary>What happens if I cancel?</summary><p>Cancel from your Stripe dashboard. You keep the app until the end of the billing period. Your funds on BloFin are untouched.</p></details>
+        <details><summary>What happens if my payment fails?</summary><p>The app shows a renewal banner and stops opening the Trading tab until you fix the payment.</p></details>
+        <details><summary>Can I lose money?</summary><p><strong>Yes.</strong> KnightTrader BloFin trades perpetual futures. Only fund your BloFin account with money you can afford to lose in full.</p></details>
       </div>
-    </section>
-
-    <section class="section">
-      <div class="container">
-        <h2>Persistent learning</h2>
-        <p>Hermes is built to remember. It writes durable memory notes for important trades and outcomes, so later runs can learn from earlier ones instead of starting blind.</p>
-        <p>That means the assistant can refine strategy over time and keep a trace of what it did, rather than treating each tick as a fresh unknown.</p>
-      </div>
-    </section>
-
-    <section class="section">
-      <div class="container">
-        <h2>Strategy improvement</h2>
-        <ul class="feature-list">
-          <li>It remembers past trades and context.</li>
-          <li>You can edit prompts and strategy notes.</li>
-          <li>It can converge on better behavior after fewer turns.</li>
-          <li>Skills and lessons are kept locally.</li>
-          <li>You are effectively training your own assistant.</li>
-        </ul>
-        <p class="disclaimer">Important: KnightTrader BloFin is a trading assistant, not financial advice. You should review your setup, API permissions, and risk. Start small, verify your Blofin API permissions, and keep keys restricted.</p>
-      </div>
-    </section>
-
-    <section id="getting" class="section">
-      <div class="container">
-        <h2>Onboard your trading assistant</h2>
-        <ol class="steps">
-          <li>
-            <span class="step-number">1</span>
-            <div>
-              <strong>Download the installer</strong>
-              <p class="step-detail">Use the button above to download the installer for your platform.</p>
-            </div>
-          </li>
-          <li>
-            <span class="step-number">2</span>
-            <div>
-              <strong>Install and open the app</strong>
-              <p class="step-detail">Run the installer, then launch KnightTrader BloFin.</p>
-            </div>
-          </li>
-          <li>
-            <span class="step-number">3</span>
-            <div>
-              <strong>Open the How-To tab</strong>
-              <p class="step-detail">Follow the steps for Hermes setup, API keys, first-time configuration, and keeping your computer awake.</p>
-            </div>
-          </li>
-          <li>
-            <span class="step-number">4</span>
-            <div>
-              <strong>Watch it run</strong>
-              <p class="step-detail">Once configured, the assistant trades on BloFin every 5 minutes while your computer stays awake and online.</p>
-            </div>
-          </li>
-        </ol>
-      </div>
-    </section>
-
-    <section id="faq" class="section">
-      <div class="container">
-        <h2>FAQ</h2>
-        <div class="faq">
-          <details>
-            <summary>I am new to crypto. Is this for me?</summary>
-            <p>Yes. The app includes a How-To tab that explains each step. You can follow along even if you have not used a trading bot or AI assistant before.</p>
-          </details>
-          <details>
-            <summary>I have used trading bots before. Is this different?</summary>
-            <p>It is local-first and inspectable. You can review logs, prompts, and memory files instead of treating it as an opaque hosted service.</p>
-          </details>
-          <details>
-            <summary>Do I need a VPN?</summary>
-            <p>BloFin restricts some jurisdictions, so a VPN may be required for platform access from your region. Use it if needed for connectivity; the app itself still runs locally on your machine.</p>
-          </details>
-          <details>
-            <summary>Do I have to place trades myself?</summary>
-            <p>No. After setup, the assistant can trade on your behalf. You can inspect logs and the dashboard anytime.</p>
-          </details>
-          <details>
-            <summary>Where do my API keys go?</summary>
-            <p>They stay on your machine. The app stores credentials locally and syncs them into your local Hermes setup.</p>
-          </details>
-          <details>
-            <summary>What if I need help?</summary>
-            <p>Open the How-To tab inside the app. It walks through Hermes setup, API keys, first-time configuration, and keeping your computer awake.</p>
-          </details>
-          <details>
-            <summary>Is this a subscription or hosted service?</summary>
-            <p>No. It is a local app with one-time setup. There is no ongoing account with us beyond the BloFin API you control.</p>
-          </details>
-          <details>
-            <summary>What should I do if the download button breaks?</summary>
-            <p>Use the Open release page link below the main download button and grab the installer for your platform manually from the latest release.</p>
-          </details>
-        </div>
-      </div>
-    </section>
+    </div></section>
   </main>
-
-  <footer class="site-footer">
-    <div class="container">
-      <p>KnightTrader BloFin — local-first trading assistant.</p>
-    </div>
-  </footer>
-
+  <footer class="site-footer"><div class="container footer-inner">
+    <p>&copy; 2026 KnightTrader BloFin. Local-first trading assistant.</p>
+    <p class="footer-risk">Perpetual futures trading involves substantial risk of loss.</p>
+  </div></footer>
   <script src="main.js"></script>
 </body>
 </html>

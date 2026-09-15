@@ -8,7 +8,25 @@
   const btnWindows = document.getElementById('btn-download-windows');
   const btnMac = document.getElementById('btn-download-mac');
   const downloadNote = document.getElementById('download-note');
-  const buttons = document.querySelectorAll('.platform-btn');
+  const downloadStatusText = document.getElementById('download-status-text');
+  const loginOverlay = document.getElementById('login-overlay');
+  const confirmationOverlay = document.getElementById('confirmation-overlay');
+  const formLogin = document.getElementById('form-login');
+  const formForgot = document.getElementById('form-forgot');
+  const formCheckout = document.getElementById('form-checkout');
+  const checkoutError = document.getElementById('checkout-error');
+  const loginError = document.getElementById('login-error');
+  const forgotError = document.getElementById('forgot-error');
+  const forgotSuccess = document.getElementById('forgot-success');
+  const btnForgot = document.getElementById('btn-forgot');
+  const btnForgotBack = document.getElementById('btn-forgot-back');
+  const btnForgotSend = document.getElementById('btn-forgot-send');
+  const btnHeaderLogin = document.getElementById('btn-header-login');
+  const btnCheckout = document.getElementById('btn-checkout');
+  const confirmationMessage = document.getElementById('confirmation-message');
+
+  // Stripe publishable key (from user's Stripe account)
+  const STRIPE_PUBLISHABLE_KEY = 'pk_live_51QoOHnF8yqGx8gLqR5yZ3YqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYq';
 
   async function fetchLatestRelease() {
     try {
@@ -41,63 +59,169 @@
         macUrl = macAsset.browser_download_url;
       }
     }
-
-    const fallbackUrl = `${releaseWebBase}/latest`;
-    if (!windowsUrl || windowsUrl === `${releaseWebBase}/latest`) windowsUrl = fallbackUrl;
-    if (!macUrl || macUrl === `${releaseWebBase}/latest`) macUrl = fallbackUrl;
   }
 
   function triggerDownload(url) {
     try {
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch {
-      // ignore and fall through
+      // ignore
     }
   }
 
-  function selectPlatform(key) {
-    const isMac = key === 'mac';
-    buttons.forEach((btn) => {
-      const active = btn.dataset.platform === key;
-      btn.classList.toggle('active', active);
-      btn.setAttribute('aria-pressed', String(active));
+  function isLoggedIn() {
+    return !!localStorage.getItem('kt-membership-email');
+  }
+
+  function setLoggedIn(email) {
+    localStorage.setItem('kt-membership-email', email);
+    localStorage.setItem('kt-membership-date', new Date().toISOString());
+    updateUIForLoggedIn();
+  }
+
+  function setLoggedOut() {
+    localStorage.removeItem('kt-membership-email');
+    localStorage.removeItem('kt-membership-date');
+    updateUIForLoggedOut();
+  }
+
+  function updateUIForLoggedIn() {
+    const email = localStorage.getItem('kt-membership-email');
+    if (loginOverlay) loginOverlay.classList.add('hidden');
+    if (btnHeaderLogin) {
+      btnHeaderLogin.textContent = email || 'Signed in';
+      btnHeaderLogin.onclick = () => {
+        if (confirm('Sign out?')) setLoggedOut();
+      };
+    }
+    if (downloadStatusText) downloadStatusText.textContent = `Membership active: ${email}. Downloads unlocked.`;
+    if (btnWindows) btnWindows.disabled = false;
+    if (btnMac) btnMac.disabled = false;
+  }
+
+  function updateUIForLoggedOut() {
+    if (loginOverlay) loginOverlay.classList.remove('hidden');
+    if (btnHeaderLogin) {
+      btnHeaderLogin.textContent = 'Sign in';
+      btnHeaderLogin.onclick = () => {
+        if (loginOverlay) loginOverlay.classList.remove('hidden');
+      };
+    }
+    if (downloadStatusText) downloadStatusText.textContent = 'Sign in with your membership email to unlock downloads.';
+    if (btnWindows) btnWindows.disabled = true;
+    if (btnMac) btnMac.disabled = true;
+  }
+
+  // Initialize
+  function init() {
+    updateDownloadLinks();
+    if (isLoggedIn()) {
+      updateUIForLoggedIn();
+    } else {
+      updateUIForLoggedOut();
+    }
+  }
+
+  // Login form submit
+  if (formLogin) {
+    formLogin.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('login-email')?.value?.trim();
+      const password = document.getElementById('login-password')?.value;
+      if (!email || !password) {
+        if (loginError) loginError.textContent = 'Please enter email and password.';
+        return;
+      }
+      // Simple local validation (in production, this would hit your backend)
+      // For now, any non-empty credentials work for download unlock
+      setLoggedIn(email);
+      if (loginError) loginError.textContent = '';
     });
-    if (btnWindows) {
-      btnWindows.classList.toggle('hidden', isMac);
-      btnWindows.textContent = 'Download for Windows';
-    }
-    if (btnMac) {
-      btnMac.classList.toggle('hidden', !isMac);
-      btnMac.textContent = 'Download for Mac';
-    }
-    if (downloadNote) {
-      downloadNote.textContent = isMac
-        ? 'Mac: download the KT BloFin .dmg directly.'
-        : 'Windows: download the KT BloFin .exe installer directly.';
-    }
   }
 
-  buttons.forEach((btn) => {
-    btn.addEventListener('click', () => selectPlatform(btn.dataset.platform));
-  });
+  // Forgot password
+  if (btnForgot) {
+    btnForgot.addEventListener('click', () => {
+      if (formLogin) formLogin.classList.add('hidden');
+      if (formForgot) formForgot.classList.remove('hidden');
+    });
+  }
 
+  if (btnForgotBack) {
+    btnForgotBack.addEventListener('click', () => {
+      if (formLogin) formLogin.classList.remove('hidden');
+      if (formForgot) formForgot.classList.add('hidden');
+    });
+  }
+
+  if (formForgot) {
+    formForgot.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('forgot-email')?.value?.trim();
+      if (!email) {
+        if (forgotError) forgotError.textContent = 'Please enter your email.';
+        return;
+      }
+      // In production, this would call your backend to send a reset email
+      if (forgotSuccess) forgotSuccess.textContent = 'If that email is in our system, a reset link has been sent.';
+      if (forgotError) forgotError.textContent = '';
+    });
+  }
+
+  // Checkout form (Stripe)
+  if (formCheckout) {
+    formCheckout.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('checkout-email')?.value?.trim();
+      const password = document.getElementById('checkout-password')?.value;
+      if (!email || !password || password.length < 8) {
+        if (checkoutError) checkoutError.textContent = 'Please enter a valid email and a password of at least 8 characters.';
+        return;
+      }
+      if (checkoutError) checkoutError.textContent = '';
+      // In production, this would redirect to Stripe Checkout
+      // For now, show confirmation and unlock
+      if (confirmationOverlay) confirmationOverlay.classList.remove('hidden');
+      // Simulate Stripe processing
+      setTimeout(() => {
+        setLoggedIn(email);
+        if (confirmationOverlay) confirmationOverlay.classList.add('hidden');
+      }, 2000);
+    });
+  }
+
+  // Download buttons
   if (btnWindows) {
     btnWindows.addEventListener('click', (e) => {
       e.preventDefault();
-      const url = windowsUrl;
-      if (!url || url === `${releaseWebBase}/latest`) return;
-      triggerDownload(url);
+      if (!isLoggedIn()) {
+        if (loginOverlay) loginOverlay.classList.remove('hidden');
+        return;
+      }
+      triggerDownload(windowsUrl);
     });
   }
 
   if (btnMac) {
     btnMac.addEventListener('click', (e) => {
       e.preventDefault();
-      const url = macUrl;
-      if (!url || url === `${releaseWebBase}/latest`) return;
-      triggerDownload(url);
+      if (!isLoggedIn()) {
+        if (loginOverlay) loginOverlay.classList.remove('hidden');
+        return;
+      }
+      triggerDownload(macUrl);
     });
   }
 
-  updateDownloadLinks().then(() => selectPlatform('windows'));
+  // Header login button
+  if (btnHeaderLogin) {
+    btnHeaderLogin.addEventListener('click', () => {
+      if (!isLoggedIn() && loginOverlay) {
+        loginOverlay.classList.remove('hidden');
+      }
+    });
+  }
+
+  // Run init
+  init();
 })();
