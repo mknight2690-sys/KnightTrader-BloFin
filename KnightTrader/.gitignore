@@ -1,0 +1,7 @@
+node_modules/
+dist/asar_extract/
+KnightTraderdistasar_extract/
+.env
+*.log
+__pycache__/
+.pytest_cache/

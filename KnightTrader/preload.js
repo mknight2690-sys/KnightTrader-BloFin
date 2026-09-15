@@ -52,6 +52,14 @@ contextBridge.exposeInMainWorld('kt', {
   getTradingStatus: () => ipcRenderer.invoke('get-trading-status'),
   attachTradingWebview: (webContentsId) => ipcRenderer.invoke('attach-trading-webview', webContentsId),
 
+  
+  // 6 System Trading System
+  startTradingSystem: () => ipcRenderer.invoke('start-trading-system'),
+  stopTradingSystem: () => ipcRenderer.invoke('stop-trading-system'),
+  getTradingSystemStatus: () => ipcRenderer.invoke('get-trading-system-status'),
+  getTradingSystemTelemetry: () => ipcRenderer.invoke('get-trading-system-telemetry'),
+  onTradingSystemTelemetry: (cb) => ipcRenderer.on('trading-system-telemetry', (_e, data) => cb(data)),
+
   // Membership auth
   authLogin: (creds) => ipcRenderer.invoke('auth-login', creds),
   authForgotPassword: (email) => ipcRenderer.invoke('auth-forgot-password', email),

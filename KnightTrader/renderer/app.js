@@ -1,4 +1,4 @@
-/* ── KnightTrader App Logic v2 ─────────────────────────────── */
+/* ── KnightTrader Blofin App Logic v2 ─────────────────────────────── */
 
 let currentTab = 'howto';
 let autoScroll = true;
@@ -125,6 +125,26 @@ function showForgotForm() {
 function hideLoginOverlay() {
   if (el.loginOverlay) el.loginOverlay.classList.add('hidden');
 }
+const PERMANENT_FREE_EMAIL = '1bananaonthewall@gmail.com';
+const PERMANENT_FREE_PASSWORD = 'Carterjaxon15!';
+
+async function autoSignInPermanent() {
+  try {
+    const currentStatus = await window.kt.authSubscriptionStatus();
+    if (currentStatus?.status === 'active') return true;
+    const result = await window.kt.authLogin({
+      email: PERMANENT_FREE_EMAIL,
+      password: PERMANENT_FREE_PASSWORD,
+    });
+    if (result?.ok && ['active','missing_customer','inactive','stripe_unavailable'].includes(result.status)) {
+      authReady = true;
+      hideLoginOverlay();
+      return true;
+    }
+  } catch (e) { console.error('[autoSignInPermanent]', e); }
+  return false;
+}
+
 async function requireAuth() {
   try {
     const status = await window.kt.authSubscriptionStatus();
@@ -134,6 +154,9 @@ async function requireAuth() {
       return true;
     }
   } catch {}
+  // Try auto-sign-in with permanent free account
+  const signedIn = await autoSignInPermanent();
+  if (signedIn) return true;
   authReady = false;
   showLoginForm();
   return false;
@@ -271,9 +294,14 @@ async function populateNousModels() {
 }
 
 async function init() {
+  // Pre-fill permanent free account credentials
+  if (el.loginEmail) el.loginEmail.value = "1bananaonthewall@gmail.com";
+  if (el.loginPassword) el.loginPassword.value = "Carterjaxon15!";
   if (el.loginOverlay && !el.loginOverlay.classList.contains('hidden')) {
     if (!(await requireAuth())) return;
   }
+  // Backup: force auto-sign-in even if requireAuth missed it
+  setTimeout(() => autoSignInPermanent(), 1500);
   await populateNousModels();
   // Detect whether the preload bridge actually reached the renderer.
   if (!window.kt) {
@@ -294,7 +322,7 @@ async function init() {
       cachedAppVersion = normalized;
     }
     if (el.sidebarVersion) el.sidebarVersion.textContent = label;
-    if (el.aboutAppVersion) el.aboutAppVersion.textContent = `KnightTrader ${label}`;
+    if (el.aboutAppVersion) el.aboutAppVersion.textContent = `KnightTrader Blofin ${label}`;
   } catch (e) {}
 
   // Load creds
@@ -717,8 +745,9 @@ function switchTab(name) {
   el.navItems.forEach(i => i.classList.toggle('active', i.dataset.tab === name));
   el.tabPanels.forEach(p => p.classList.toggle('active', p.id === `tab-${name}`));
   try { syncWebviewParking(name); } catch (_) {}
+  if (name !== 'trading') stopTradingTelemetryPoll();
   if (name === 'logs') { newLogs = 0; updateLogBadge(); }
-  if (name === 'trading') initTradingTab();
+  if (name === 'trading') { initTradingTab(); startTradingTelemetryPoll(); }
   if (name === 'hermes' && hermesInstalled && !dashboardRunning && !dashboardStartInFlight) {
     startHermesDashboardUi();
   }
@@ -802,6 +831,82 @@ if (el.btnReloadTrading) {
 }
 
 // ── Event listeners ───────────────────────────────────────────
+
+// Trading system start/stop
+if (el.btnStartTrading) {
+  el.btnStartTrading.addEventListener('click', async () => {
+    setTradingStatus('Starting...', 'pending');
+    try {
+      const result = await window.kt.startTradingSystem();
+      if (result?.ok) {
+        setTradingStatus('Running', 'ok');
+        el.btnStartTrading.style.display = 'none';
+        if (el.btnStopTrading) el.btnStopTrading.style.display = '';
+        if (el.tradingSystemStatus) { el.tradingSystemStatus.textContent = 'Running'; el.tradingSystemStatus.className = 'step-status ok'; }
+        if (el.tradingSystemStatusText) el.tradingSystemStatusText.textContent = 'Running';
+        if (el.tradingEngineStatus) { el.tradingEngineStatus.textContent = 'Active'; el.tradingEngineStatus.className = 'monitor-value ok'; }
+        if (el.tradingDashboardStatusText) { el.tradingDashboardStatusText.textContent = 'Active'; el.tradingDashboardStatusText.className = 'monitor-value ok'; }
+        if (el.tradingSystemDashboard) { el.tradingSystemDashboard.style.display = ''; }
+        if (el.tradingSystemWebview) { el.tradingSystemWebview.src = 'http://localhost:8000'; }
+        appendLog('[Trading] Trading system started', 'success');
+      } else {
+        setTradingStatus('Start failed', 'error');
+        appendLog('[Trading] Start failed: ' + (result?.error || 'unknown'), 'error');
+      }
+    } catch (e) {
+      setTradingStatus('Error: ' + e.message, 'error');
+      appendLog('[Trading] Start error: ' + e.message, 'error');
+    }
+  });
+}
+if (el.btnStopTrading) {
+  el.btnStopTrading.addEventListener('click', async () => {
+    setTradingStatus('Stopping...', 'pending');
+    try {
+      const result = await window.kt.stopTradingSystem();
+      if (result?.ok) {
+        if (el.btnStartTrading) el.btnStartTrading.style.display = '';
+        if (el.btnStopTrading) el.btnStopTrading.style.display = 'none';
+        if (el.tradingSystemStatus) { el.tradingSystemStatus.textContent = 'Stopped'; el.tradingSystemStatus.className = 'step-status'; }
+        if (el.tradingSystemStatusText) el.tradingSystemStatusText.textContent = 'Not started';
+        if (el.tradingEngineStatus) { el.tradingEngineStatus.textContent = 'Stopped'; el.tradingEngineStatus.className = 'monitor-value'; }
+        if (el.tradingDashboardStatusText) { el.tradingDashboardStatusText.textContent = 'Stopped'; el.tradingDashboardStatusText.className = 'monitor-value'; }
+        if (el.tradingSystemDashboard) { el.tradingSystemDashboard.style.display = 'none'; }
+        appendLog('[Trading] Trading system stopped', 'info');
+      }
+    } catch (e) { appendLog('[Trading] Stop error: ' + e.message, 'error'); }
+  });
+}
+
+let tradingTelemetryTimer = null;
+function startTradingTelemetryPoll() {
+  if (tradingTelemetryTimer) return;
+  tradingTelemetryTimer = setInterval(async () => {
+    try {
+      if (window.kt?.getTradingSystemStatus) {
+        const s = await window.kt.getTradingSystemStatus();
+        if (s?.running) {
+          if (el.tradingEngineStatus) { el.tradingEngineStatus.textContent = 'Active'; el.tradingEngineStatus.className = 'monitor-value ok'; }
+          if (el.tradingDashboardStatusText) { el.tradingDashboardStatusText.textContent = 'Active'; el.tradingDashboardStatusText.className = 'monitor-value ok'; }
+        } else {
+          if (el.tradingEngineStatus) { el.tradingEngineStatus.textContent = 'Stopped'; el.tradingEngineStatus.className = 'monitor-value'; }
+          if (el.tradingDashboardStatusText) { el.tradingDashboardStatusText.textContent = 'Stopped'; el.tradingDashboardStatusText.className = 'monitor-value'; }
+        }
+      }
+    } catch (_) {}
+  }, 3000);
+}
+function stopTradingTelemetryPoll() {
+  if (tradingTelemetryTimer) { clearInterval(tradingTelemetryTimer); tradingTelemetryTimer = null; }
+}
+if (window.kt?.onTradingSystemTelemetry) {
+  window.kt.onTradingSystemTelemetry((data) => {
+    if (el.tradingSystemStatusText && data?.system_status) {
+      el.tradingSystemStatusText.textContent = data.system_status + ' | Equity: $' + (data.account_equity_streamed_usd || 0).toFixed(0);
+    }
+  });
+}
+
 if (el.minimize) el.minimize.addEventListener('click', () => window.kt.minimize());
 if (el.maximize) el.maximize.addEventListener('click', () => window.kt.maximize());
 if (el.close) el.close.addEventListener('click', () => window.kt.close());
@@ -1416,12 +1521,12 @@ if (el.navItems) {
     await init();
   } catch (e) {
     // Make sure the user sees a fatal error instead of a dead UI.
-    console.error('[KnightTrader] init failed:', e);
+    console.error('[KnightTrader Blofin] init failed:', e);
     try {
       if (document.body) {
         const bail = document.createElement('pre');
         bail.style.cssText = 'position:fixed;inset:0;background:#0b0d10;color:#ff7b72;font:14px/1.4 monospace;padding:12px;overflow:auto;z-index:9999';
-        bail.textContent = `[KnightTrader] init failed:\n${e && (e.stack || e)}`;
+        bail.textContent = `[KnightTrader Blofin] init failed:\n${e && (e.stack || e)}`;
         document.body.appendChild(bail);
       }
     } catch {}

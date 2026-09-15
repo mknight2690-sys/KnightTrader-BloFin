@@ -1,0 +1,8 @@
+{
+    "is_demo": false,
+    "base_url": "https://openapi.blofin.com",
+    "ws_url": "wss://openapi.blofin.com/ws/public",
+    "symbol": "BTC-USDT",
+    "max_drawdown": 0.12,
+    "confidence_threshold": 0.35
+}
