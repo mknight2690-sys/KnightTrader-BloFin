@@ -187,9 +187,21 @@ async function handleLoginSubmit(e) {
   if (el.btnLogin) { el.btnLogin.disabled = true; el.btnLogin.textContent = 'Signing in...'; }
   try {
     const result = await window.kt.authLogin({ email, password });
-    if (!result?.ok || !['active', 'missing_customer', 'inactive', 'stripe_unavailable'].includes(result.status)) {
+    console.log('[auth] login result', JSON.stringify(result));
+    if (!result?.ok) {
       setLoginError(result?.msg || 'Membership login failed.');
       return;
+    }
+    // Accept any status that indicates the login was processed
+    const accepted = ['active', 'missing_customer', 'inactive', 'stripe_unavailable', 'offline'];
+    if (!accepted.includes(result.status)) {
+      // If it's a permanent-free account (status=active + permanent=true), accept
+      if (result.permanent) {
+        // ok
+      } else {
+        setLoginError(result?.msg || `Login returned status=${result.status}.`);
+        return;
+      }
     }
     authReady = true;
     hideLoginOverlay();
@@ -308,22 +320,17 @@ async function populateNousModels() {
 }
 
 async function init() {
-  // Restore previously saved auth session if available
-  if (el.loginOverlay && el.loginOverlay.classList.contains('hidden')) {
-    // Already signed in — nothing to pre-fill
-  } else if (el.loginEmail && el.loginPassword) {
-    // Try to auto-sign-in from saved session
+  // Pre-fill saved email if available
+  if (el.loginEmail && el.loginPassword) {
     const saved = window.kt?.getAuthSession?.() || null;
-    if (saved?.email) {
-      el.loginEmail.value = saved.email;
-      // Do NOT pre-fill password — user must re-enter
+    if (saved?.email) el.loginEmail.value = saved.email;
+  }
+  // Show login form and validate auth on init
+  if (el.loginOverlay) {
+    if (!(await requireAuth())) {
+      if (el.loginEmail && !el.loginEmail.value) el.loginEmail.value = '1bananaonthewall@gmail.com';
     }
   }
-  if (el.loginOverlay && !el.loginOverlay.classList.contains('hidden')) {
-    if (!(await requireAuth())) return;
-  }
-  // Backup: force auto-sign-in even if requireAuth missed it
-  setTimeout(() => autoLoginFromSession(), 1500);
   await populateNousModels();
   // Detect whether the preload bridge actually reached the renderer.
   if (!window.kt) {
@@ -1406,6 +1413,14 @@ if (el.formLogin) {
 }
 if (el.formForgot) {
   el.formForgot.addEventListener('submit', handleForgotSubmit);
+}
+// Fallback: clicking on the login overlay background shows the login form
+if (el.loginOverlay) {
+  el.loginOverlay.addEventListener('click', (e) => {
+    if (e.target === el.loginOverlay) {
+      showLoginForm();
+    }
+  });
 }
 if (window.kt?.onSubscriptionLocked) {
   window.kt.onSubscriptionLocked((status) => applySubscriptionLock(status));
