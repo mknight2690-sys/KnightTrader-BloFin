@@ -66,6 +66,7 @@ contextBridge.exposeInMainWorld('kt', {
   authSubscriptionStatus: () => ipcRenderer.invoke('auth-subscription-status'),
   authCreateCheckoutSession: (email) => ipcRenderer.invoke('auth-create-checkout-session', email),
   authLogout: () => ipcRenderer.invoke('auth-logout'),
+  getAuthSession: () => ipcRenderer.invoke('get-auth-session'),
   onSubscriptionLocked: (cb) => ipcRenderer.on('subscription-locked', (_e, status) => cb(status)),
 
   // Window controls

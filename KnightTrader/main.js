@@ -2469,6 +2469,11 @@ authSession = loadAuthSession();
     saveSubscription(null);
     return { ok: true };
   });
+  ipcMain.handle('get-auth-session', () => {
+    const session = loadAuthSession();
+    if (!session?.email) return null;
+    return { email: session.email };
+  });
   startSubscriptionWatchdog();
 
 // ── Window ─────────────────────────────────────────────────────────────────
