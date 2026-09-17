@@ -140,7 +140,7 @@ async function autoLoginFromSession() {
       hideLoginOverlay();
       return true;
     }
-  } catch (_) {}
+  } catch (e) { console.warn('[autoLoginFromSession] status check failed:', e?.message || e); }
   return false;
 }
 
@@ -167,7 +167,7 @@ async function requireAuth() {
       hideLoginOverlay();
       return true;
     }
-  } catch {}
+  } catch (e) { console.warn('[requireAuth] status check failed:', e?.message || e); }
   // Try auto-sign-in with permanent free account
   const signedIn = await autoLoginFromSession();
   if (signedIn) return true;
@@ -320,6 +320,16 @@ async function populateNousModels() {
 }
 
 async function init() {
+  // ── Guard: wait for the preload bridge before touching auth ──
+  if (!window.kt) {
+    console.warn('[init] window.kt not ready yet — waiting 200ms');
+    await new Promise(r => setTimeout(r, 200));
+    if (!window.kt) {
+      console.error('[init] window.kt still unavailable after retry — aborting');
+      throw new Error('window.kt is not available; preload bridge may have failed');
+    }
+  }
+
   // Pre-fill saved email if available
   if (el.loginEmail && el.loginPassword) {
     const saved = window.kt?.getAuthSession?.() || null;
@@ -332,10 +342,6 @@ async function init() {
     }
   }
   await populateNousModels();
-  // Detect whether the preload bridge actually reached the renderer.
-  if (!window.kt) {
-    throw new Error('window.kt is not available; preload bridge may have failed');
-  }
 
   try {
     const appVersion = await window.kt.getAppVersion();
