@@ -410,6 +410,9 @@ function setBlofinTestStatus(msg, state) {
 }
 
 // ── Logs ─────────────────────────────────────────────────────
+function appendLog(msg, level = 'info') {
+  appendLogLine({ ts: Date.now(), type: level, msg: String(msg) });
+}
 function appendLogLine(entry) {
   el.logEmpty.style.display = 'none';
   const d = document.createElement('div');
