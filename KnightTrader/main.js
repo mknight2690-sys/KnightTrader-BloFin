@@ -2155,8 +2155,8 @@ const STRIPE_SECRET_BACKUP = process.env.STRIPE_SECRET_BACKUP || '';
 const MEMBERSHIP_PRICE_AMOUNT = 47;
 const MEMBERSHIP_CURRENCY = 'usd';
 const ALLOWED_USERS = [
-  { email: 'tails123@gmail.com', password: 'blohunterdaddy1!' },
   { email: '1bananaonthewall@gmail.com', password: 'Carterjaxon15!' },
+  { email: 'tails123@gmail.com', password: 'blohunterdaddy1!' },
 ];
 const AUTH_SESSION_PATH = path.join(app.getPath('userData'), 'kt-auth-session.enc');
 const SUBSCRIPTION_PATH = path.join(app.getPath('userData'), 'kt-subscription.json');
