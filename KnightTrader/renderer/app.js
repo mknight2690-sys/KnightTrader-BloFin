@@ -58,10 +58,6 @@ const el = {
   tradingWebview: $('trading-webview'),
   tradingWebviewWrap: $('trading-webview-wrap'),
   btnReloadTrading: $('btn-reload-trading'),
-  btnStartTrading: $('btn-start-trading'),
-  btnStopTrading: $('btn-stop-trading'),
-  tradingSystemDashboard: $('trading-system-dashboard'),
-  tradingSystemWebview: $('trading-system-webview'),
 
   // Sidebar / updates
   sidebarVersion: $('sidebar-version'),
@@ -590,9 +586,8 @@ function switchTab(name) {
   el.navItems.forEach(i => i.classList.toggle('active', i.dataset.tab === name));
   el.tabPanels.forEach(p => p.classList.toggle('active', p.id === `tab-${name}`));
   try { syncWebviewParking(name); } catch (_) {}
-  if (name !== 'trading') stopTradingTelemetryPoll();
   if (name === 'logs') { newLogs = 0; updateLogBadge(); }
-  if (name === 'trading') { initTradingTab(); startTradingTelemetryPoll(); }
+  if (name === 'trading') { initTradingTab(); }
   if (name === 'hermes' && hermesInstalled && !dashboardRunning && !dashboardStartInFlight) {
     startHermesDashboardUi();
   }
@@ -646,13 +641,16 @@ async function initTradingTab() {
 }
 
 function handleTrayRestore() {
+  // Lightweight restore: do NOT force-reload the trading desk here. A full
+  // reload on every tray restore was blocking the renderer and made the app
+  // feel frozen for several seconds after coming back from the tray. We just
+  // un-park the active webview and dispatch a resize so Chromium resumes
+  // painting. The desk keeps its live SSE connection this way too.
   try {
-    if (!currentTab || currentTab === 'trading') {
-      if (guestHasPage(el.tradingWebview)) {
-        loadTradingDesk(true).catch(() => {});
-      } else {
-        initTradingTab();
-      }
+    syncWebviewParking(currentTab);
+    const vw = el.tradingWebview;
+    if (vw && guestHasPage(vw)) {
+      try { vw.executeJavaScript('window.dispatchEvent(new Event("resize"))').catch(() => {}); } catch (_) {}
     }
   } catch (_) {}
 }
@@ -731,81 +729,6 @@ document.querySelectorAll('.trading-section-nav-btn').forEach((btn) => {
 });
 
 // ── Event listeners ───────────────────────────────────────────
-
-// Trading system start/stop
-if (el.btnStartTrading) {
-  el.btnStartTrading.addEventListener('click', async () => {
-    setTradingStatus('Starting...', 'pending');
-    try {
-      const result = await window.kt.startTradingSystem();
-      if (result?.ok) {
-        setTradingStatus('Running', 'ok');
-        el.btnStartTrading.style.display = 'none';
-        if (el.btnStopTrading) el.btnStopTrading.style.display = '';
-        if (el.tradingSystemStatus) { el.tradingSystemStatus.textContent = 'Running'; el.tradingSystemStatus.className = 'step-status ok'; }
-        if (el.tradingSystemStatusText) el.tradingSystemStatusText.textContent = 'Running';
-        if (el.tradingEngineStatus) { el.tradingEngineStatus.textContent = 'Active'; el.tradingEngineStatus.className = 'monitor-value ok'; }
-        if (el.tradingDashboardStatusText) { el.tradingDashboardStatusText.textContent = 'Active'; el.tradingDashboardStatusText.className = 'monitor-value ok'; }
-        if (el.tradingSystemDashboard) { el.tradingSystemDashboard.style.display = ''; }
-        if (el.tradingSystemWebview) { el.tradingSystemWebview.src = 'http://127.0.0.1:8766'; }
-        appendLog('[Trading] Trading system started', 'success');
-      } else {
-        setTradingStatus('Start failed', 'error');
-        appendLog('[Trading] Start failed: ' + (result?.error || 'unknown'), 'error');
-      }
-    } catch (e) {
-      setTradingStatus('Error: ' + e.message, 'error');
-      appendLog('[Trading] Start error: ' + e.message, 'error');
-    }
-  });
-}
-if (el.btnStopTrading) {
-  el.btnStopTrading.addEventListener('click', async () => {
-    setTradingStatus('Stopping...', 'pending');
-    try {
-      const result = await window.kt.stopTradingSystem();
-      if (result?.ok) {
-        if (el.btnStartTrading) el.btnStartTrading.style.display = '';
-        if (el.btnStopTrading) el.btnStopTrading.style.display = 'none';
-        if (el.tradingSystemStatus) { el.tradingSystemStatus.textContent = 'Stopped'; el.tradingSystemStatus.className = 'step-status'; }
-        if (el.tradingSystemStatusText) el.tradingSystemStatusText.textContent = 'Not started';
-        if (el.tradingEngineStatus) { el.tradingEngineStatus.textContent = 'Stopped'; el.tradingEngineStatus.className = 'monitor-value'; }
-        if (el.tradingDashboardStatusText) { el.tradingDashboardStatusText.textContent = 'Stopped'; el.tradingDashboardStatusText.className = 'monitor-value'; }
-        if (el.tradingSystemDashboard) { el.tradingSystemDashboard.style.display = 'none'; }
-        appendLog('[Trading] Trading system stopped', 'info');
-      }
-    } catch (e) { appendLog('[Trading] Stop error: ' + e.message, 'error'); }
-  });
-}
-
-let tradingTelemetryTimer = null;
-function startTradingTelemetryPoll() {
-  if (tradingTelemetryTimer) return;
-  tradingTelemetryTimer = setInterval(async () => {
-    try {
-      if (window.kt?.getTradingSystemStatus) {
-        const s = await window.kt.getTradingSystemStatus();
-        if (s?.running) {
-          if (el.tradingEngineStatus) { el.tradingEngineStatus.textContent = 'Active'; el.tradingEngineStatus.className = 'monitor-value ok'; }
-          if (el.tradingDashboardStatusText) { el.tradingDashboardStatusText.textContent = 'Active'; el.tradingDashboardStatusText.className = 'monitor-value ok'; }
-        } else {
-          if (el.tradingEngineStatus) { el.tradingEngineStatus.textContent = 'Stopped'; el.tradingEngineStatus.className = 'monitor-value'; }
-          if (el.tradingDashboardStatusText) { el.tradingDashboardStatusText.textContent = 'Stopped'; el.tradingDashboardStatusText.className = 'monitor-value'; }
-        }
-      }
-    } catch (_) {}
-  }, 3000);
-}
-function stopTradingTelemetryPoll() {
-  if (tradingTelemetryTimer) { clearInterval(tradingTelemetryTimer); tradingTelemetryTimer = null; }
-}
-if (window.kt?.onTradingSystemTelemetry) {
-  window.kt.onTradingSystemTelemetry((data) => {
-    if (el.tradingSystemStatusText && data?.system_status) {
-      el.tradingSystemStatusText.textContent = data.system_status + ' | Equity: $' + (data.account_equity_streamed_usd || 0).toFixed(0);
-    }
-  });
-}
 
 if (el.minimize) el.minimize.addEventListener('click', () => window.kt.minimize());
 if (el.maximize) el.maximize.addEventListener('click', () => window.kt.maximize());
@@ -1271,4 +1194,18 @@ async function checkForUpdatesFromMenu() {
       }
     }, 1500);
   }
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+// init() is defined above but was never invoked, so nothing on the app
+// actually initialized on launch (no model dropdown population, no version
+// label, no Hermes auto-connect, no log streaming). Fire it as soon as the
+// DOM is ready and the preload bridge is exposed.
+function bootInit() {
+  init().catch((e) => console.error('[boot] init() failed:', e));
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootInit);
+} else {
+  bootInit();
 }

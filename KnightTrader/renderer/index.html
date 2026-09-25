@@ -894,10 +894,7 @@
             <h1>Live Trading</h1>
             <p class="panel-sub">Positions, equity, signals, and voice — live from Blofin.</p>
           </div>
-          <span id="trading-system-status" class="step-status">Stopped</span>
-            <button type="button" id="btn-start-trading" class="btn-primary">Start Trading System</button>
-            <button type="button" id="btn-stop-trading" class="btn-secondary" style="display:none;">Stop</button>
-            <button type="button" id="btn-reload-trading" class="btn-secondary">Reload</button>
+            <button type="button" id="btn-reload-trading" class="btn-secondary">Reload desk</button>
           </div>
         <div id="trading-section-monitor" class="trading-monitor">
           <div class="monitor-item">
@@ -909,18 +906,6 @@
             <div class="monitor-value" id="trading-activity-status">Waiting for Hermes</div>
           </div>
           <div class="monitor-item">
-            <div class="monitor-label">Trading system</div>
-            <div class="monitor-value" id="trading-system-status-text">Not started</div>
-          </div>
-          <div class="monitor-item">
-            <div class="monitor-label">Engine</div>
-            <div class="monitor-value" id="trading-engine-status">Stopped</div>
-          </div>
-          <div class="monitor-item">
-            <div class="monitor-label">Dashboard</div>
-            <div class="monitor-value" id="trading-dashboard-status-text">Stopped</div>
-          </div>
-          <div class="monitor-item">
             <div class="monitor-label">What to confirm</div>
             <div class="monitor-value monitor-hint">
               1. Equity updates in the dashboard<br>
@@ -929,13 +914,6 @@
               4. If the dashboard is blank, open Hermes dashboard in browser from Hermes tab
             </div>
           </div>
-        </div>
-        <div id="trading-system-dashboard" style="display:none; margin-top:12px; border:1px solid var(--border2); border-radius:8px; overflow:hidden;">
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--surface2); border-bottom:1px solid var(--border2);">
-            <span style="font-weight:600; font-size:13px;">KnightTrader BloFin Live Dashboard</span>
-            <a href="http://127.0.0.1:8766" target="_blank" style="color:var(--link); font-size:12px;">Open full dashboard &#8599;</a>
-          </div>
-          <webview id="trading-system-webview" src="http://127.0.0.1:8766" partition="persist:blohunter-trading" allowpopups webpreferences="contextIsolation=yes, nodeIntegration=no" style="width:100%; height:500px; border:none;"></webview>
         </div>
         <div id="trading-webview-wrap" class="trading-webview-wrap">
           <webview
