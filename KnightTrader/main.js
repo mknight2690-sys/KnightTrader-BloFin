@@ -1455,7 +1455,27 @@ async function stopHermesDashboard() {
 }
 
 // ── Cron configuration ─────────────────────────────────────────────────────
+// The cron prompt is sourced from an external file so it can be edited
+// without touching the app source. Falls back to the embedded prompt if
+// the file is missing or unreadable.
+const CRON_PROMPT_FILE = 'C:\\Users\\mknig\\OneDrive\\Documents\\Hermes Blofin Cron Prompt.txt';
+
+function readCronPromptFile() {
+  try {
+    if (!fs.existsSync(CRON_PROMPT_FILE)) return null;
+    const raw = fs.readFileSync(CRON_PROMPT_FILE, 'utf8');
+    const text = String(raw || '').trim();
+    return text ? text : null;
+  } catch (e) {
+    appendLog(`⚠ Could not read cron prompt file: ${e.message} — using built-in prompt`, 'warn');
+    return null;
+  }
+}
+
 function buildCronPrompt() {
+  const fromFile = readCronPromptFile();
+  if (fromFile) return fromFile;
+
   const compPath = getCompendiumPath();
   const isDemo = !!storeData.blofin?.demoMode;
   const targetUrl = isDemo ? BLOFIN_DEMO_URL : BLOFIN_LIVE_URL;
@@ -1625,7 +1645,7 @@ async function configureCron() {
   const prompt = buildCronPrompt();
   const jobSpec = {
     name: 'blofin-equity-vertical',
-    schedule: 'every 10m',
+    schedule: 'every 5m',
     // Use custom + Nous inference URL — sk-nous API keys work here.
     // provider:nous requires OAuth device login, not a portal API key.
     provider: 'custom',
@@ -1648,7 +1668,7 @@ async function configureCron() {
           token,
         );
         if (updated.status < 300) {
-          appendLog('✅ Cron job updated: blofin-equity-vertical (every 10m)', 'success');
+          appendLog('✅ Cron job updated: blofin-equity-vertical (every 5m)', 'success');
           triggerAndConfirmCron(token, existing.id);
           return { ok: true, jobId: existing.id, updated: true };
         }
@@ -1667,7 +1687,7 @@ async function configureCron() {
     appendLog('Creating cron job via POST /api/cron/jobs', 'info');
     const created = await hermesApiRequest('POST', '/api/cron/jobs?profile=default', jobSpec, token);
     if (created.status < 300) {
-      appendLog('✅ Cron configured: blofin-equity-vertical (every 10m)', 'success');
+      appendLog('✅ Cron configured: blofin-equity-vertical (every 5m)', 'success');
       triggerAndConfirmCron(token, created.body?.id);
       return { ok: true, jobId: created.body?.id, endpoint: '/api/cron/jobs' };
     }
