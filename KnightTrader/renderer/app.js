@@ -710,16 +710,21 @@ async function initTradingTab() {
 }
 
 function handleTrayRestore() {
-  // Lightweight restore: do NOT force-reload the trading desk here. A full
-  // reload on every tray restore was blocking the renderer and made the app
-  // feel frozen for several seconds after coming back from the tray. We just
-  // un-park the active webview and dispatch a resize so Chromium resumes
-  // painting. The desk keeps its live SSE connection this way too.
+  // The trading-desk webview stops painting while the window is hidden in
+  // the tray and comes back blank/frozen. A resize nudge alone isn't
+  // enough to wake it. A lightweight reload() of the CURRENT url forces a
+  // fresh render + SSE reconnect — the bridge keeps running, so data
+  // resumes within a second or two. This is much lighter than the old
+  // loadTradingDesk(true) path (which restarted the whole bridge and
+  // blocked the renderer). We reload regardless of the active tab so the
+  // desk is live by the time the user switches to it.
   try {
     syncWebviewParking(currentTab);
     const vw = el.tradingWebview;
     if (vw && guestHasPage(vw)) {
-      try { vw.executeJavaScript('window.dispatchEvent(new Event("resize"))').catch(() => {}); } catch (_) {}
+      try { vw.reload(); } catch (_) {}
+    } else if (currentTab === 'trading') {
+      initTradingTab();
     }
   } catch (_) {}
 }

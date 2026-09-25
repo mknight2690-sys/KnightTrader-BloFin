@@ -177,6 +177,28 @@ async function ensureInstallerReady(timeoutMs = 180000) {
   return installerFileExists();
 }
 
+// Backup relaunch sentinel. The NSIS installer's own --force-run flag is
+// unreliable in unattended/silent mode, so before we quit we spawn a
+// detached, hidden cmd process that waits for the installer to finish
+// replacing files and then launches the app exe. If the installer's
+// force-run also fires, the single-instance lock collapses the two
+// launches into one. This guarantees the app comes back up after an
+// auto-update even on configs where --force-run alone doesn't relaunch.
+function spawnRelaunchSentinel() {
+  try {
+    const exePath = process.execPath;
+    if (!exePath) return;
+    // Wait ~12s for the NSIS silent install to finish, then launch the
+    // (now-updated) app. Use start "" so a console window doesn't flash.
+    const cmd = `timeout /t 12 /nobreak >nul & start "" "${exePath}"`;
+    const child = spawn('cmd.exe', ['/c', cmd], { detached: true, stdio: 'ignore', windowsHide: true });
+    child.unref();
+    appendLog('🔁 Relaunch sentinel armed — app will restart after install', 'info');
+  } catch (e) {
+    appendLog(`⚠ Relaunch sentinel failed: ${e?.message || e}`, 'warn');
+  }
+}
+
 function scheduleSilentAutoRestart(delayMs = 45000) {
   if (autoRestartTimer) return; // already scheduled
   appendLog(`⏱ Auto-restart in ${Math.round(delayMs / 1000)}s to install update`, 'info');
@@ -197,6 +219,7 @@ function scheduleSilentAutoRestart(delayMs = 45000) {
       // app.quit() proceeds and the NSIS installer can run. This works
       // even when the app was minimized to the tray.
       isQuittingForUpdate = true;
+      spawnRelaunchSentinel();
       try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
       for (const w of BrowserWindow.getAllWindows()) {
         try { if (!w.isDestroyed()) w.destroy(); } catch (_) {}
@@ -246,6 +269,7 @@ async function quitAndInstallFromMain() {
     // Destroy the tray + EVERY window so the NSIS installer can replace
     // files. Force-quit path: bypass the hide-on-close tray handler.
     isQuittingForUpdate = true;
+    spawnRelaunchSentinel();
     try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
     for (const w of BrowserWindow.getAllWindows()) {
       try { if (!w.isDestroyed()) w.destroy(); } catch (_) {}
