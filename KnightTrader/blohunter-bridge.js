@@ -2,6 +2,8 @@ const { pathToFileURL } = require('url');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
+const crypto = require('crypto');
 const { BlohunterStorage } = require('./blohunter/storage');
 const { createSseOffscreen } = require('./blohunter/sse-offscreen');
 const { installNodeFetch } = require('./blohunter/node-https');
@@ -21,6 +23,91 @@ const MIME_TYPES = {
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',
 };
+
+const BLOFIN_LIVE_REST_URL = 'https://openapi.blofin.com';
+const BLOFIN_DEMO_REST_URL = 'https://demo-trading-openapi.blofin.com';
+// Direct BloFin REST reads are cached briefly so repeated dashboard refreshes
+// don't hammer the exchange. Tuned to the shared-snapshot TTL the desk expects.
+const LIVE_BLOFIN_CACHE_TTL_MS = 2500;
+
+function signBlofinRestRequest(secret, method, requestPath, timestamp, nonce) {
+  const prehash = `${requestPath}${method}${timestamp}${nonce}`;
+  const hex = crypto.createHmac('sha256', secret).update(prehash).digest('hex');
+  return Buffer.from(hex, 'utf8').toString('base64');
+}
+
+function blofinRestGet(baseUrl, requestPath, creds) {
+  return new Promise((resolve) => {
+    const timestamp = String(Date.now());
+    const nonce = crypto.randomUUID();
+    const signature = signBlofinRestRequest(creds.secret, 'GET', requestPath, timestamp, nonce);
+    const url = new URL(baseUrl + requestPath);
+    const req = https.request(
+      {
+        hostname: url.hostname,
+        port: url.port || 443,
+        path: url.pathname + url.search,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'KnightTrader-BloFin/1.0',
+          Accept: 'application/json',
+          'ACCESS-KEY': creds.apiKey,
+          'ACCESS-SIGN': signature,
+          'ACCESS-TIMESTAMP': timestamp,
+          'ACCESS-NONCE': nonce,
+          'ACCESS-PASSPHRASE': creds.passphrase,
+        },
+        timeout: 15000,
+      },
+      (res) => {
+        let raw = '';
+        res.on('data', (chunk) => { raw += chunk; });
+        res.on('end', () => {
+          const trimmed = raw.trim();
+          if (trimmed.startsWith('<') || /<!DOCTYPE/i.test(trimmed)) {
+            resolve({ ok: false, msg: 'HTML response (WAF/Cloudflare block)', status: res.statusCode });
+            return;
+          }
+          try {
+            const parsed = JSON.parse(raw);
+            if (String(parsed?.code ?? '') === '0') {
+              resolve({ ok: true, data: parsed.data, status: res.statusCode });
+            } else {
+              resolve({ ok: false, msg: parsed?.msg || parsed?.message || `code ${parsed?.code}`, code: parsed?.code, status: res.statusCode });
+            }
+          } catch (err) {
+            resolve({ ok: false, msg: trimmed.slice(0, 200) || `HTTP ${res.statusCode}`, status: res.statusCode });
+          }
+        });
+      }
+    );
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, msg: 'Request timed out' }); });
+    req.on('error', (err) => resolve({ ok: false, msg: err.message }));
+    req.end();
+  });
+}
+
+function firstNumber(...values) {
+  for (const value of values) {
+    const num = Number(value);
+    if (Number.isFinite(num) && num !== 0) return num;
+  }
+  return 0;
+}
+
+function isUsdtCurrency(detail) {
+  const ccy = String(detail?.currency || detail?.ccy || detail?.coin || '').toUpperCase();
+  return ccy === 'USDT';
+}
+
+function isUsdtMarginedPerpetual(position) {
+  const instId = String(position?.instId || position?.symbol || '').toUpperCase();
+  const settleCcy = String(position?.settleCcy || position?.settleCcys || '').toUpperCase();
+  const marginMode = String(position?.marginMode || position?.posSide || '').toLowerCase();
+  if (!instId.includes('USDT')) return false;
+  if (settleCcy && settleCcy !== 'USDT') return false;
+  return true;
+}
 
 function resolveBlohunterConnectRoot() {
   const candidates = [
@@ -648,7 +735,20 @@ class BlohunterBridge {
     }
     let equity = Number(snapshot?.data?.balances?.totalEquity || 0);
     let settled = Number(snapshot?.data?.balances?.settledEquity || equity);
-    // Fall back to cron's last_tick.json if SSE stream has no balance data
+    // Authoritative fallback: a direct signed BloFin REST read. The desk
+    // snapshot is frequently 0 (SSE 401 / vault not unlocked in background),
+    // and the cron last_tick value is stale — which is exactly what produced
+    // the wrong "seeded at 19.56" equity curve. Prefer the live REST balance.
+    if (!(equity > 0)) {
+      const live = await this.fetchLiveBlofinAccount();
+      if (live && live.totalEquity > 0) {
+        equity = live.totalEquity;
+        settled = live.totalEquity - live.totalUnrealized;
+        this.log(`[BloHunter] Equity curve: using direct BloFin equity=${equity.toFixed(4)} USDT`);
+      }
+    }
+    // Final fallback to cron's last_tick.json if both the desk snapshot and the
+    // direct REST read came back empty.
     if (!(equity > 0)) {
       const lastTickPath = path.join(this.hermesHome, 'trading', 'last_tick.json');
       try {
@@ -813,9 +913,113 @@ class BlohunterBridge {
     }
   }
 
+  // Direct BloFin REST read (bypasses the BloHunter SDK/vault/SSE chain). The
+  // bridge already proves these credentials work via the Setup-tab test, so we
+  // reuse the same signing to fetch authoritative account equity, available
+  // margin, and open positions. This is the fallback that fixes "equity wrong,
+  // exposure wrong, open positions showing zero" when the embedded desk's
+  // background sync loop / gateway SSE isn't delivering live data.
+  async fetchLiveBlofinAccount() {
+    const now = Date.now();
+    if (this.liveBlofinCache && now - this.liveBlofinCacheAt < LIVE_BLOFIN_CACHE_TTL_MS) {
+      return this.liveBlofinCache;
+    }
+    const creds = this.storage.pick('session', ['apiKey', 'secret', 'passphrase']);
+    const apiKey = String(creds.apiKey || '').trim();
+    const secret = String(creds.secret || '').trim();
+    const passphrase = String(creds.passphrase || '').trim();
+    if (!apiKey || !secret || !passphrase) {
+      return null;
+    }
+    const baseUrl = this.demoMode ? BLOFIN_DEMO_REST_URL : BLOFIN_LIVE_REST_URL;
+    const balancePath = '/api/v1/account/balance?accountType=futures';
+    const positionsPath = '/api/v1/account/positions?accountType=futures';
+    const [balanceRes, positionsRes] = await Promise.all([
+      blofinRestGet(baseUrl, balancePath, { apiKey, secret, passphrase }),
+      blofinRestGet(baseUrl, positionsPath, { apiKey, secret, passphrase }),
+    ]);
+    if (!balanceRes.ok) {
+      this.log(`[BloHunter] direct balance read failed: ${balanceRes.msg || balanceRes.status}`);
+      return null;
+    }
+    const balanceData = balanceRes.data || {};
+    const details = Array.isArray(balanceData.details)
+      ? balanceData.details
+      : Array.isArray(balanceData)
+        ? balanceData
+        : [];
+    const usdtDetails = details.filter(isUsdtCurrency);
+    const totalEquity = Number(
+      balanceData.totalEquity
+      || firstNumber(...usdtDetails.map((d) => d.equity || d.balance || d.cashBalance))
+      || 0
+    );
+    const totalAvailable = Number(
+      firstNumber(...usdtDetails.map((d) => d.available || d.availBal || d.availableBalance))
+      || 0
+    );
+    const rawPositions = positionsRes.ok && Array.isArray(positionsRes.data) ? positionsRes.data : [];
+    const usdtPositions = rawPositions.filter(isUsdtMarginedPerpetual);
+    const totalUnrealized = usdtPositions.reduce(
+      (sum, p) => sum + firstNumber(p.unrealizedPnl, p.pnl),
+      0
+    );
+    const totalMargin = usdtPositions.reduce(
+      (sum, p) => sum + firstNumber(p.margin, p.initialMargin),
+      0
+    );
+    const live = {
+      ok: true,
+      totalEquity,
+      totalAvailable,
+      totalUnrealized,
+      totalMargin,
+      accountRows: details,
+      openPositions: rawPositions,
+      openCount: rawPositions.length,
+      fetchedAt: now,
+    };
+    this.liveBlofinCache = live;
+    this.liveBlofinCacheAt = now;
+    this.log(
+      `[BloHunter] direct BloFin read ok: equity=${totalEquity} avail=${totalAvailable} positions=${rawPositions.length} unrealized=${totalUnrealized}`
+    );
+    return live;
+  }
+
   async enrichDashboardSnapshot(result) {
     if (!result || typeof result !== 'object') return result;
-    if (!result.ok || !result.data || typeof result.data !== 'object') {
+    if (!result.data || typeof result.data !== 'object') {
+      // Even when the desk snapshot itself failed, inject a direct BloFin read so
+      // the dashboard still shows live equity / positions instead of nothing.
+      const live = await this.fetchLiveBlofinAccount();
+      if (live) {
+        return {
+          ok: true,
+          data: {
+            balances: {
+              account: live.accountRows,
+              totalEquity: live.totalEquity,
+              totalAvailable: live.totalAvailable,
+              totalUnrealized: live.totalUnrealized,
+              settledEquity: live.totalEquity - live.totalUnrealized,
+            },
+            openPositions: live.openPositions,
+            exposure: {
+              openCount: live.openCount,
+              totalMargin: live.totalMargin,
+              totalUnrealized: live.totalUnrealized,
+            },
+            recentActivity: this.readHermesActivityEntries(),
+            profile: {
+              blofinApiOk: true,
+              blofinApiKnown: true,
+              blofinApiFresh: true,
+              blofinMonitoringSuspended: false,
+            },
+          },
+        };
+      }
       return result;
     }
 
@@ -827,7 +1031,51 @@ class BlohunterBridge {
     const liveAvailable = this.liveAvailableFromSnapshot(data);
     const lastTick = this.readHermesLastTick();
 
-    // When BloHunter stream snapshots are stale, use Hermes cron balance truth.
+    // Authoritative source: a direct signed BloFin REST read. The desk's own
+    // background sync loop / gateway SSE frequently fails to deliver live data
+    // (SSE 401, vault not unlocked in background, apilock suspension, etc.),
+    // leaving totalEquity=0 and openPositions=[]. When that happens, inject the
+    // real account state here so the dashboard shows correct equity, exposure,
+    // and open positions. This takes priority over the stale cron fallback.
+    const deskEquity = Number(data.balances.totalEquity);
+    const deskHasPositions = Array.isArray(data.openPositions) && data.openPositions.length > 0;
+    if (!(deskEquity > 0) || !deskHasPositions) {
+      const live = await this.fetchLiveBlofinAccount();
+      if (live) {
+        if (!(deskEquity > 0) && live.totalEquity > 0) {
+          data.balances.totalEquity = live.totalEquity;
+        }
+        if (!(Number(data.balances.totalAvailable) > 0) && live.totalAvailable > 0) {
+          data.balances.totalAvailable = live.totalAvailable;
+        }
+        if (!(Number(data.balances.totalUnrealized) !== 0) && Number.isFinite(live.totalUnrealized)) {
+          data.balances.totalUnrealized = live.totalUnrealized;
+        }
+        if (!Number.isFinite(Number(data.balances.settledEquity)) || !(Number(data.balances.settledEquity) > 0)) {
+          data.balances.settledEquity = live.totalEquity - live.totalUnrealized;
+        }
+        if (!deskHasPositions && live.openPositions.length > 0) {
+          data.openPositions = live.openPositions;
+          data.openPositionsUnavailable = false;
+          if (data.errorMessage && /open positions/i.test(String(data.errorMessage))) {
+            data.errorMessage = '';
+          }
+        }
+        if (!Array.isArray(data.balances.account) || data.balances.account.length === 0) {
+          data.balances.account = live.accountRows;
+        }
+        if (data.exposure && typeof data.exposure === 'object') {
+          if (!deskHasPositions && live.openPositions.length > 0) {
+            data.exposure.openCount = live.openCount;
+            data.exposure.totalMargin = live.totalMargin;
+            data.exposure.totalUnrealized = live.totalUnrealized;
+          }
+        }
+      }
+    }
+
+    // When BloHunter stream snapshots are stale, use Hermes cron balance truth
+    // only as a last resort (the direct BloFin read above is preferred).
     if (lastTick) {
       if (!(Number(data.balances.totalEquity) > 0) && lastTick.equity > 0) {
         data.balances.totalEquity = lastTick.equity;
@@ -835,7 +1083,6 @@ class BlohunterBridge {
       if (!(Number(data.balances.totalAvailable) > 0) && lastTick.avail >= 0) {
         data.balances.totalAvailable = lastTick.avail;
       }
-      // If snapshot claims "all funds used" while cron shows free margin, prefer cron.
       if (lastTick.avail > 0 && Number(data.balances.totalAvailable) <= 0) {
         data.balances.totalAvailable = lastTick.avail;
       }
