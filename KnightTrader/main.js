@@ -108,7 +108,8 @@ autoUpdater.on('update-not-available', (info) => {
 });
 autoUpdater.on('update-downloaded', (info) => {
   updateDownloadedInfo = info;
-  appendLog(`⬇ Update ready: ${info?.version || 'latest'} — auto-restart scheduled`, 'success');
+  downloadedInstallerPath = info?.downloadedFile || null;
+  appendLog(`⬇ Update ready: ${info?.version || 'latest'}${downloadedInstallerPath ? ` → ${path.basename(downloadedInstallerPath)}` : ''} — auto-restart scheduled`, 'success');
   broadcastUpdate('update-downloaded', { version: info?.version, release: info });
   // Silent auto-update: every instance installs + restarts on its own so
   // users who are away for an extended period stay current with no lapse
@@ -129,15 +130,61 @@ autoUpdater.on('download-progress', (progress) => {
 });
 
 // Silent auto-restart timer. We wait a grace period after an update is
-// downloaded, then destroy the tray + window and let electron-updater
-// quitAndInstall (which runs the NSIS installer and relaunches the app).
+// downloaded, then verify the installer file is actually on disk, destroy
+// the tray + window, and let electron-updater quitAndInstall (which runs
+// the NSIS installer and relaunches the app).
+//
+// Robustness: electron-updater sometimes fires update-downloaded but the
+// staged installer file is later missing (cleared by a prior failed
+// install, antivirus quarantine, or a partial download). Quitting at
+// that point produces a "Windows cannot find …Setup-x.y.z.exe" dialog and
+// leaves the app half-dead. So we VERIFY the file exists first and re-
+// download if it's gone before touching the tray/window.
 let autoRestartTimer = null;
+let downloadedInstallerPath = null;
+
+function installerFileExists() {
+  if (!downloadedInstallerPath) return false;
+  try { return fs.existsSync(downloadedInstallerPath); } catch (_) { return false; }
+}
+
+// Make sure the installer package is present on disk. If it's missing,
+// force a fresh download and wait for it to land. Returns true when the
+// file is ready, false on timeout/failure (caller must NOT quit in that
+// case — it re-arms the restart for the next cycle instead).
+async function ensureInstallerReady(timeoutMs = 180000) {
+  if (installerFileExists()) return true;
+  appendLog('⬇ Update installer missing — re-downloading before restart…', 'info');
+  updateDownloadedInfo = null;
+  try {
+    // downloadUpdate() fetches the package again and resolves with the
+    // path; it also re-emits update-downloaded when done.
+    const result = await autoUpdater.downloadUpdate();
+    if (Array.isArray(result) && result[0]) downloadedInstallerPath = result[0];
+    else if (typeof result === 'string') downloadedInstallerPath = result;
+  } catch (e) {
+    appendLog(`⚠ Re-download attempt failed: ${e?.message || e}`, 'warn');
+  }
+  const deadline = Date.now() + timeoutMs;
+  while (!installerFileExists() && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return installerFileExists();
+}
+
 function scheduleSilentAutoRestart(delayMs = 45000) {
   if (autoRestartTimer) return; // already scheduled
   appendLog(`⏱ Auto-restart in ${Math.round(delayMs / 1000)}s to install update`, 'info');
   autoRestartTimer = setTimeout(async () => {
     autoRestartTimer = null;
     try {
+      const ready = await ensureInstallerReady();
+      if (!ready) {
+        appendLog('⚠ Auto-restart deferred — installer not available. Will retry on next check.', 'warn');
+        // Re-arm so the next periodic update check can re-trigger a restart.
+        scheduleSilentAutoRestart(60000);
+        return;
+      }
       appendLog('🔄 Auto-restarting to install update…', 'success');
       try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
       try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy(); } catch {}
@@ -145,6 +192,7 @@ function scheduleSilentAutoRestart(delayMs = 45000) {
     } catch (err) {
       appendLog(`⚠ Auto-restart failed: ${err?.message || err}`, 'warn');
       broadcastUpdate('update-error', err);
+      scheduleSilentAutoRestart(60000);
     }
   }, delayMs).unref?.();
 }
@@ -161,23 +209,27 @@ async function checkForUpdatesFromMain() {
 async function quitAndInstallFromMain() {
   try {
     if (!updateDownloadedInfo) {
-      // No update downloaded yet — trigger a check, which will auto-download
+      // No update known yet — trigger a check, which will auto-download
       // (autoDownload = true). If an update is found it will arrive shortly.
       appendLog('⏳ No update downloaded yet — checking now…', 'info');
       await autoUpdater.checkForUpdates();
-      // Give the download a moment; if it's already cached this returns fast.
       const deadline = Date.now() + 60000;
       while (!updateDownloadedInfo && Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 1000));
       }
     }
-    if (!updateDownloadedInfo) {
-      appendLog('⚠ No update ready to install', 'warn');
-      return;
+    // Verify the installer file is actually on disk before we tear the
+    // app down. Re-download if it's missing (fixes the "Windows cannot
+    // find …Setup-x.y.z.exe" error from a cleared/partial staging dir).
+    const ready = await ensureInstallerReady();
+    if (!ready) {
+      appendLog('⚠ Update installer could not be downloaded — aborting restart', 'warn');
+      broadcastUpdate('update-error', new Error('Installer download failed'));
+      throw new Error('Installer download failed');
     }
     // Destroy the tray + window so the NSIS installer can replace files.
     try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
-    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close(); } catch {}
+    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy(); } catch {}
     autoUpdater.quitAndInstall();
   } catch (err) {
     appendLog(`⚠ Install update failed: ${err?.message || err}`, 'warn');

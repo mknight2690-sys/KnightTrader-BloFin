@@ -1,6 +1,6 @@
 {
   "name": "knight-trader",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "description": "KnightTrader Blofin - Hermes credential manager & launcher for Windows",
   "main": "main.js",
   "scripts": {
