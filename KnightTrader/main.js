@@ -158,6 +158,113 @@ async function quitAndInstallFromMain() {
   }
 }
 
+// ── Forced / critical update kill-switch ───────────────────────────────────
+// A tiny manifest hosted on the public landing page (GitHub Pages) declares
+// the minimum app version allowed to run. If the installed version is below
+// `forceUpdateFrom`, a NON-DISMISSIBLE modal blocks the app until the user
+// updates & restarts. This lets us force every running instance to update
+// when a really critical fix ships.
+//
+// Failure mode: if the manifest can't be fetched (flaky network), the app
+// FAILS OPEN — it does not block. We never want a dead network to lock a
+// user out of a working app. The next time they're online, the manifest is
+// fetched and the block takes effect.
+const UPDATE_MANIFEST_URL = 'https://mknight2690-sys.github.io/knighttrader-blo-site/manifest.json';
+let forceUpdateWindow = null;
+let forceUpdateTimer = null;
+
+function compareVersions(a, b) {
+  const pa = String(a || '').replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = String(b || '').replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i += 1) {
+    const da = pa[i] || 0;
+    const db = pb[i] || 0;
+    if (da !== db) return da - db;
+  }
+  return 0;
+}
+
+async function fetchUpdateManifest() {
+  for (let i = 0; i < 3; i += 1) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(UPDATE_MANIFEST_URL, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (res.ok) return await res.json();
+    } catch (_) {
+      await new Promise((r) => setTimeout(r, 1200 * (i + 1)));
+    }
+  }
+  return null;
+}
+
+async function checkForcedUpdate() {
+  let manifest;
+  try {
+    manifest = await fetchUpdateManifest();
+  } catch (e) {
+    appendLog(`ℹ Forced-update check skipped: ${e.message}`, 'info');
+    return;
+  }
+  if (!manifest) return; // network failed — fail open
+  const min = String(manifest.forceUpdateFrom || '').trim();
+  if (!min) return; // no forced update currently active
+  if (compareVersions(app.getVersion(), min) >= 0) return; // already satisfies
+  appendLog(`⛔ Forced update required: installed ${app.getVersion()} < required ${min}`, 'warn');
+  showForceUpdateWindow(manifest);
+}
+
+function showForceUpdateWindow(manifest) {
+  if (forceUpdateWindow && !forceUpdateWindow.isDestroyed()) return;
+  const msg = String(manifest.forceUpdateMessage || 'A critical update is required to continue using KnightTrader BloFin.');
+  const url = String(manifest.forceUpdateUrl || 'https://mknight2690-sys.github.io/knighttrader-blo-site/');
+  const min = String(manifest.forceUpdateFrom || '');
+  const ver = app.getVersion();
+  const query = new URLSearchParams({ msg, url, min, ver }).toString();
+  const htmlPath = path.join(__dirname, 'renderer', 'force-update.html');
+  forceUpdateWindow = new BrowserWindow({
+    parent: mainWindow,
+    modal: true,
+    width: 480,
+    height: 420,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    show: true,
+    backgroundColor: '#0b0f14',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+  forceUpdateWindow.loadFile(htmlPath, { query: { msg, url, min, ver } });
+  // Make the modal impossible to dismiss: every close attempt is prevented
+  // so the user must update & restart to continue.
+  forceUpdateWindow.on('close', (e) => { e.preventDefault(); });
+  forceUpdateWindow.on('hide', () => {
+    // If something hides it (e.g. minimize-to-tray path), re-show it.
+    if (forceUpdateWindow && !forceUpdateWindow.isDestroyed()) {
+      try { forceUpdateWindow.show(); } catch (_) {}
+    }
+  });
+  // Also keep the main window from being interacted with.
+  try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setEnabled(false); } catch (_) {}
+}
+
+function startForcedUpdateWatcher() {
+  // Re-check periodically so a critical update pushed while the app is
+  // running still takes effect.
+  if (forceUpdateTimer) return;
+  forceUpdateTimer = setInterval(() => { checkForcedUpdate().catch(() => {}); }, 15 * 60 * 1000);
+  forceUpdateTimer.unref?.();
+}
+
 const BLOHUNTER_SRC = path.join(os.homedir(), 'Downloads', 'blohunter-connect', 'src');
 let blohunterWatcherReady = false;
 let blohunterHotReloadTimer = null;
@@ -2683,6 +2790,12 @@ app.whenReady().then(async () => {
   else appendLog('⚠ BloHunter Connect not found — Trading tab needs Downloads\\blohunter-connect', 'warn');
   startBlohunterHotReloadWatcher();
   checkForUpdatesFromMain();
+
+  // Forced/critical update kill-switch: check the public manifest on startup
+  // and every 15 minutes so a critical update pushed while the app runs
+  // still blocks the app until the user updates & restarts.
+  checkForcedUpdate().catch((e) => appendLog(`ℹ Forced-update check failed: ${e.message}`, 'info'));
+  startForcedUpdateWatcher();
 
   // Auto-ping free models on startup, pick the first that "pongs", and
   // forward it to the cron job so the user doesn't see "1 message" ticks
