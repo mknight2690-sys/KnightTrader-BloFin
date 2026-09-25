@@ -7,6 +7,12 @@ let hermesInstalled = false;
 let dashboardRunning = false;
 let dashboardStartInFlight = false;
 let cachedAppVersion = '';
+// One-shot: on startup we land on the How-To tab and wait for the
+// dashboard+gateway running indicator to flash, THEN auto-switch to the
+// Trading tab. Guards so we only do this once and never override a tab
+// the user manually picked during that window.
+let startupAutoSwitchArmed = true;
+let didStartupAutoSwitch = false;
 
 // ── DOM shortcuts ─────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
@@ -191,6 +197,7 @@ async function init() {
     if (ds.ready && ds.gatewayRunning) {
       setDashboardState(true, true, true);
       loadDashboard(ds.url || 'http://127.0.0.1:9119');
+      maybeStartupAutoSwitchToTrading();
     } else {
       setDashboardState(false, false);
     }
@@ -214,6 +221,9 @@ async function init() {
   window.kt.onDashboardReady((d) => {
     setDashboardState(true, true, d.gatewayRunning);
     loadDashboard(d.url);
+    // Startup sequence: once the dashboard+gateway running indicator
+    // flashes, switch from the How-To tab to the Trading tab.
+    if (d.gatewayRunning) maybeStartupAutoSwitchToTrading();
   });
 
   window.kt.onDashboardStopped(() => {
@@ -234,24 +244,37 @@ async function init() {
   updateNousTestButton();
   updateBlofinTestButton();
 
-  // Restore the user's last tab so an auto-update restart lands them back
-  // where they were. Default to the Trading tab on a fresh install (the
-  // "service" view: shows the live desk with cron running in the
-  // background), so after an unattended restart they immediately land on
-  // the trading tab with the dashboard + gateway connected.
-  try {
-    const lastTab = localStorage.getItem('kt-last-tab');
-    const restoreTab = (lastTab && el.navItems.some(i => i.dataset.tab === lastTab)) ? lastTab : 'trading';
-    switchTab(restoreTab);
-  } catch (_) { try { switchTab('trading'); } catch (_) {} }
+  // Startup sequence: land on the How-To tab first and WAIT there until
+  // the dashboard+gateway running indicator flashes (handled by
+  // maybeStartupAutoSwitchToTrading, wired into onDashboardReady and the
+  // initial dashboard-status check). Only then do we switch to the Trading
+  // tab. We do NOT restore the last tab on startup — the user wants a
+  // consistent howto → (running) → trading sequence every launch.
+  try { switchTab('howto'); } catch (_) {}
 
   // Pre-warm the BloHunter trading desk in the background so the Trading
-  // tab has live data the moment the user opens it (no lapse in service
-  // after an auto-restart). This just starts the bridge/SSE; the webview
-  // itself loads when the Trading tab is shown.
+  // tab has live data the moment we switch to it. This just starts the
+  // bridge/SSE; the webview itself loads when the Trading tab is shown.
   setTimeout(() => {
     try { window.kt?.startTradingDashboard?.().catch(() => {}); } catch (_) {}
   }, 12000);
+}
+
+// One-shot startup auto-switch: called when the dashboard+gateway running
+// indicator is confirmed. Gives the user a brief moment to see the
+// running indicator on the How-To tab, then switches to the Trading tab.
+// Cancels itself if the user has already manually navigated away from
+// the How-To tab during the wait.
+function maybeStartupAutoSwitchToTrading() {
+  if (!startupAutoSwitchArmed || didStartupAutoSwitch) return;
+  startupAutoSwitchArmed = false;
+  didStartupAutoSwitch = true;
+  setTimeout(() => {
+    // Don't override a tab the user picked themselves during the wait.
+    if (currentTab === 'howto') {
+      try { switchTab('trading'); } catch (_) {}
+    }
+  }, 1500);
 }
 
 // ── Hermes install check ──────────────────────────────────────
@@ -631,7 +654,11 @@ async function loadTradingDesk(forceReload = false) {
   );
   if (!result?.ok || !result.url) return;
 
-  const nextUrl = forceReload ? `${result.url}${result.url.includes('?') ? '&' : '?'}t=${Date.now()}` : result.url;
+  // Always cache-bust so the dashboard loads fresh and reconnects its SSE
+  // stream (a stale cached page can leave equity/positions frozen). This
+  // only runs on the first desk load — later tab switches reuse the live
+  // webview without reloading, so SSE stays connected.
+  const nextUrl = `${result.url}${result.url.includes('?') ? '&' : '?'}t=${Date.now()}`;
   if (webview.src !== nextUrl) webview.src = nextUrl;
   tradingLoaded = true;
 }
