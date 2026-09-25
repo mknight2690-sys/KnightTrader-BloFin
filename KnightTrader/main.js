@@ -92,6 +92,11 @@ function broadcastUpdate(channel, payload) {
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 let updateDownloadedInfo = null;
+// Set to true while we're tearing the app down to install an update. While
+// this is set, the hide-on-close tray handler must NOT swallow the close
+// (which would abort app.quit() and leave the NSIS installer never running),
+// and before-quit force-destroys any surviving windows.
+let isQuittingForUpdate = false;
 
 autoUpdater.on('checking-for-update', () => {
   appendLog('🔎 Checking for updates…', 'info');
@@ -186,8 +191,16 @@ function scheduleSilentAutoRestart(delayMs = 45000) {
         return;
       }
       appendLog('🔄 Auto-restarting to install update…', 'success');
+      // Force-quit path: set the flag so the hide-on-close tray handler
+      // can't swallow the close, then destroy the tray + EVERY window
+      // (including the force-update modal and any hidden tray window) so
+      // app.quit() proceeds and the NSIS installer can run. This works
+      // even when the app was minimized to the tray.
+      isQuittingForUpdate = true;
       try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
-      try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy(); } catch {}
+      for (const w of BrowserWindow.getAllWindows()) {
+        try { if (!w.isDestroyed()) w.destroy(); } catch (_) {}
+      }
       autoUpdater.quitAndInstall();
     } catch (err) {
       appendLog(`⚠ Auto-restart failed: ${err?.message || err}`, 'warn');
@@ -227,9 +240,13 @@ async function quitAndInstallFromMain() {
       broadcastUpdate('update-error', new Error('Installer download failed'));
       throw new Error('Installer download failed');
     }
-    // Destroy the tray + window so the NSIS installer can replace files.
+    // Destroy the tray + EVERY window so the NSIS installer can replace
+    // files. Force-quit path: bypass the hide-on-close tray handler.
+    isQuittingForUpdate = true;
     try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
-    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy(); } catch {}
+    for (const w of BrowserWindow.getAllWindows()) {
+      try { if (!w.isDestroyed()) w.destroy(); } catch (_) {}
+    }
     autoUpdater.quitAndInstall();
   } catch (err) {
     appendLog(`⚠ Install update failed: ${err?.message || err}`, 'warn');
@@ -2598,6 +2615,11 @@ function createWindow() {
   mainWindow.on('close', (e) => {
     if (!mainWindow) return;
     if (mainWindow.isDestroyed()) return;
+    // When we're force-quitting to install an update, do NOT swallow the
+    // close — let the window close so app.quit() can proceed and the NSIS
+    // installer can run. (This is what un-breaks auto-update when the app
+    // is minimized to tray.)
+    if (isQuittingForUpdate) return;
     if (process.getCreationTime) {
       const openedAt = process.getCreationTime();
       const now = Date.now();
@@ -2907,3 +2929,14 @@ app.whenReady().then(async () => {
   });
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+// Force-quit safety net for updates: if any window survives the close
+// flow while we're installing an update (e.g. a hidden tray window whose
+// close handler was bypassed but not yet destroyed), tear it down here so
+// nothing can abort app.quit() and block the NSIS installer.
+app.on('before-quit', () => {
+  if (!isQuittingForUpdate) return;
+  for (const w of BrowserWindow.getAllWindows()) {
+    try { if (!w.isDestroyed()) w.destroy(); } catch (_) {}
+  }
+  try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch (_) {}
+});
