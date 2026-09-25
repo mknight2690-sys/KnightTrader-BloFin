@@ -186,7 +186,7 @@ async function init() {
   } catch (e) {}
 
   // Check hermes install
-  checkHermesStatus();
+  await checkHermesStatus();
 
   // Check dashboard status — only restore UI if gateway is actually ready.
   // A leftover listener on 9119 used to hide the start button forever.
@@ -199,6 +199,15 @@ async function init() {
       setDashboardState(false, false);
     }
   } catch (e) {}
+
+  // Auto-connect Hermes dashboard + gateway on app startup (not only when
+  // the user clicks into the Hermes tab). Previously this only fired from
+  // switchTab('hermes'), so the user had to visit the tab + scroll to get
+  // the gateway running before cron could fire.
+  if (hermesInstalled && !dashboardRunning && !dashboardStartInFlight) {
+    appendLog('🚀 Auto-starting Hermes dashboard + gateway on startup…', 'info');
+    startHermesDashboardUi();
+  }
 
   // Live events
   window.kt.onLogLine((entry) => {
@@ -214,6 +223,17 @@ async function init() {
   window.kt.onDashboardStopped(() => {
     setDashboardState(false, false);
   });
+
+  // When the startup auto-ping picks a working free model, update the
+  // dropdown so the UI matches what the cron is actually using.
+  if (window.kt?.onFreeModelSelected) {
+    window.kt.onFreeModelSelected((info) => {
+      if (info?.model) {
+        setNousModelValue(info.model);
+        appendLogLine({ ts: Date.now(), type: 'success', msg: `🤖 Auto-selected free model: ${info.model}` });
+      }
+    });
+  }
 
   updateNousTestButton();
   updateBlofinTestButton();
@@ -645,15 +665,70 @@ if (window.kt?.onUpdateError) {
   window.kt.onUpdateError(() => {});
 }
 
-try {
-  if (window.ipcRenderer?.on) {
-    window.ipcRenderer.on('kt-restore-trading-webview', handleTrayRestore);
-  }
-} catch (_) {}
+// Tray restore: main process sends kt-restore-trading-webview when the window
+// is brought back from the tray. Reload the trading desk so it isn't left
+// parked/blank. (Previously this used window.ipcRenderer.on, which the
+// preload bridge never exposed — so the listener never registered and the
+// app appeared frozen after restore.)
+if (window.kt?.onRestoreTradingWebview) {
+  window.kt.onRestoreTradingWebview(handleTrayRestore);
+}
+
+// Window shown: fires on first show AND on every restore from tray. Un-park
+// the active tab's webview and force a resize so it repaints.
+if (window.kt?.onWindowShown) {
+  window.kt.onWindowShown(() => {
+    try {
+      syncWebviewParking(currentTab);
+      // Force webviews to re-layout after being hidden.
+      const vws = [el.tradingWebview, el.hermesWebview].filter(Boolean);
+      for (const vw of vws) {
+        try { vw.executeJavaScript('window.dispatchEvent(new Event("resize"))').catch(() => {}); } catch (_) {}
+      }
+    } catch (_) {}
+  });
+}
 
 if (el.btnReloadTrading) {
   el.btnReloadTrading.addEventListener('click', () => loadTradingDesk(true).catch(() => {}));
 }
+
+// ── Trading tab section quick-nav ──────────────────────────────
+// Each button at the bottom of the Trading tab scrolls a section of the
+// embedded BloHunter desk into view. The sections live INSIDE the
+// #trading-webview guest, so we use executeJavaScript to scrollIntoView
+// the matching element. Falls back to scrolling the parent page if the
+// webview isn't loaded yet.
+document.querySelectorAll('.trading-section-nav-btn').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const selector = btn.dataset.deskScroll;
+    if (!selector) return;
+    const vw = el.tradingWebview;
+    if (!vw) return;
+    // Make sure the trading tab's webview is parked=false (visible) first.
+    parkWebview(vw, false);
+    const js = `
+      (() => {
+        const el = document.querySelector(${JSON.stringify(selector)});
+        if (!el) return 'not-found';
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return 'ok';
+      })()
+    `;
+    try {
+      const result = await vw.executeJavaScript(js);
+      if (result === 'not-found') {
+        // Webview loaded but section missing — fall back to scrolling the
+        // webview itself into view on the parent page.
+        vw.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    } catch (_) {
+      // Webview not ready — scroll it into view on the parent page so the
+      // user at least lands on the desk.
+      vw.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
 
 // ── Event listeners ───────────────────────────────────────────
 

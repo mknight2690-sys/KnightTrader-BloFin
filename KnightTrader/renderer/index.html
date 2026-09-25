@@ -889,7 +889,7 @@
 
       <!-- ── TRADING TAB ───────────────────────────────────── -->
       <section id="tab-trading" class="tab-panel">
-        <div class="panel-header trading-header">
+        <div id="trading-section-header" class="panel-header trading-header">
           <div>
             <h1>Live Trading</h1>
             <p class="panel-sub">Positions, equity, signals, and voice — live from Blofin.</p>
@@ -899,7 +899,7 @@
             <button type="button" id="btn-stop-trading" class="btn-secondary" style="display:none;">Stop</button>
             <button type="button" id="btn-reload-trading" class="btn-secondary">Reload</button>
           </div>
-        <div class="trading-monitor">
+        <div id="trading-section-monitor" class="trading-monitor">
           <div class="monitor-item">
             <div class="monitor-label">Trading dashboard</div>
             <div class="monitor-value" id="trading-dashboard-status">Not loaded yet</div>
@@ -946,6 +946,13 @@
             webpreferences="contextIsolation=yes, nodeIntegration=no">
           </webview>
         </div>
+        <!-- Section quick-nav: clicking a button scrolls that BloHunter desk section into view -->
+        <nav id="trading-section-nav" class="trading-section-nav" aria-label="Trading sections">
+          <button type="button" class="trading-section-nav-btn" data-desk-scroll=".summary-panel">Account Equity</button>
+          <button type="button" class="trading-section-nav-btn" data-desk-scroll=".activity-panel">Activity</button>
+          <button type="button" class="trading-section-nav-btn" data-desk-scroll='[data-resize-panel="openPositions"]'>Open Positions</button>
+          <button type="button" class="trading-section-nav-btn" data-desk-scroll=".closed-trades-48h-section">Closed Positions</button>
+        </nav>
       </section>
 
       <!-- ── LOGS TAB ──────────────────────────────────────── -->

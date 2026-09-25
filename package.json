@@ -12,7 +12,9 @@
   "scripts": {
     "start": "npm run --prefix KnightTrader start",
     "dev": "npm run --prefix KnightTrader dev",
-    "build": "npm run --prefix KnightTrader build"
+    "build": "npm run --prefix KnightTrader build",
+    "build:win": "npm run --prefix KnightTrader build:win",
+    "build:mac": "npm run --prefix KnightTrader build:mac"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",

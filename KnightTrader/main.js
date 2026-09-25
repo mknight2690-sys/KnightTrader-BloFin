@@ -8,6 +8,11 @@ const { spawn, execFileSync } = require('child_process');
 const crypto = require('crypto');
 const http = require('http');
 const https = require('https');
+// electron-updater provides in-app auto-update: it downloads the latest
+// NSIS package from GitHub Releases (using latest.yml + .blockmap for
+// differential patches) and applies it silently, then quitAndInstall()
+// restarts the app — no manual download/reinstall, no installer UI.
+const { autoUpdater } = require('electron-updater');
 const os = require('os');
 
 const UPDATE_OWNER = 'mknight2690-sys';
@@ -75,65 +80,77 @@ async function downloadFileToPath(url, dest) {
 function broadcastUpdate(channel, payload) {
   for (const wc of webContents.getAllWebContents()) wc.send(channel, payload);
 }
-async function checkForUpdatesFromMain() {
+
+// ── electron-updater wiring ────────────────────────────────────────────────
+// autoUpdater pulls the latest release from GitHub Releases (using the
+// latest.yml + .blockmap already published as release assets), downloads
+// the NSIS package with differential patches, and applies it silently.
+// quitAndInstall() then restarts the app — no manual download, no
+// installer UI. The renderer's existing update-* IPC channels are kept
+// intact so the bottom-left "Check for updates" menu and the update
+// banner keep working unchanged.
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+let updateDownloadedInfo = null;
+
+autoUpdater.on('checking-for-update', () => {
   appendLog('🔎 Checking for updates…', 'info');
+});
+autoUpdater.on('update-available', (info) => {
+  const version = info?.version || 'latest';
+  appendLog(`⬆ Update available: ${version}`, 'success');
+  broadcastUpdate('update-available', { version, release: info });
+});
+autoUpdater.on('update-not-available', (info) => {
+  const version = info?.version || app.getVersion();
+  appendLog(`✅ Up to date: ${version}`, 'info');
+  broadcastUpdate('update-not-available', { version, release: info });
+});
+autoUpdater.on('update-downloaded', (info) => {
+  updateDownloadedInfo = info;
+  appendLog(`⬇ Update ready: ${info?.version || 'latest'} — restart to install`, 'success');
+  broadcastUpdate('update-downloaded', { version: info?.version, release: info });
+});
+autoUpdater.on('error', (err) => {
+  appendLog(`⚠ Update error: ${err?.message || err}`, 'warn');
+  broadcastUpdate('update-error', err);
+});
+autoUpdater.on('download-progress', (progress) => {
+  if (progress?.percent != null) {
+    appendLog(`⬇ Update download: ${Math.round(progress.percent)}%`, 'info');
+  }
+});
+
+async function checkForUpdatesFromMain() {
   try {
-    const release = await fetchLatestRelease();
-    const latestVersion = normalizeVersion(release.tag_name || release.name || '');
-    const currentVersion = normalizeVersion(app.getVersion());
-    const asset = findWindowsAsset(release);
-    if (!latestVersion || versionGt(latestVersion, currentVersion)) {
-      pendingUpdateRelease = release;
-      appendLog(`⬆ Update available: ${latestVersion || release.tag_name}`, 'success');
-      broadcastUpdate('update-available', { version: latestVersion || release.tag_name, release });
-    } else {
-      pendingUpdateRelease = null;
-      appendLog(`✅ Up to date: ${currentVersion}`, 'info');
-      broadcastUpdate('update-not-available', { version: currentVersion, release });
-    }
+    await autoUpdater.checkForUpdates();
   } catch (err) {
-    pendingUpdateRelease = null;
     appendLog(`⚠ Update check failed: ${err?.message || err}`, 'warn');
     broadcastUpdate('update-error', err);
   }
 }
-async function downloadPendingUpdate() {
-  if (!pendingUpdateRelease) throw new Error('No update is available');
-  const asset = findWindowsAsset(pendingUpdateRelease);
-  if (!asset) throw new Error('No Windows installer in the latest release');
-  const dest = path.join(app.getPath('temp'), `6SystemTradingApp-Update-${Date.now()}.exe`);
-  appendLog(`⬇ Downloading update: ${asset.name}`, 'info');
-  await downloadFileToPath(asset.browser_download_url || asset.url, dest);
-  appendLog(`⬇ Update ready: ${pendingUpdateRelease.tag_name || pendingUpdateRelease.name}`, 'success');
-  return dest;
-}
-function forceQuitApp() {
-  try {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      try { mainWindow.destroy(); } catch {}
-    }
-  } catch {}
-  try {
-    if (appTray) {
-      try { appTray.destroy(); } catch {}
-      appTray = null;
-      trayReady = false;
-    }
-  } catch {}
-  // Also kill any lingering electron process
-  try {
-    const { execSync } = require('child_process');
-    execSync('taskkill /F /IM electron.exe /T', { timeout: 5000 }).catch(() => {});
-  } catch {}
-  // Ensure app exits
-  setTimeout(() => { try { app.quit(); } catch {} }, 500);
-}
+
 async function quitAndInstallFromMain() {
   try {
-    const installerPath = await downloadPendingUpdate();
-    forceQuitApp();
-    app.relaunch({ args: [installerPath] });
-    app.quit();
+    if (!updateDownloadedInfo) {
+      // No update downloaded yet — trigger a check, which will auto-download
+      // (autoDownload = true). If an update is found it will arrive shortly.
+      appendLog('⏳ No update downloaded yet — checking now…', 'info');
+      await autoUpdater.checkForUpdates();
+      // Give the download a moment; if it's already cached this returns fast.
+      const deadline = Date.now() + 60000;
+      while (!updateDownloadedInfo && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+    if (!updateDownloadedInfo) {
+      appendLog('⚠ No update ready to install', 'warn');
+      return;
+    }
+    // Destroy the tray + window so the NSIS installer can replace files.
+    try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
+    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close(); } catch {}
+    autoUpdater.quitAndInstall();
   } catch (err) {
     appendLog(`⚠ Install update failed: ${err?.message || err}`, 'warn');
     broadcastUpdate('update-error', err);
@@ -805,6 +822,14 @@ function restoreFromTray() {
     if (mainWindow.isMinimized()) mainWindow.restore();
     if (!mainWindow.isVisible()) mainWindow.show();
     mainWindow.focus();
+    // Nudge the renderer to repaint after being hidden. A hidden window can
+    // leave webviews in a throttled/blank state; toggling the size by 0px
+    // forces a full reflow + repaint without a visible flicker.
+    try {
+      const [w, h] = mainWindow.getSize();
+      mainWindow.setSize(w, h + 1);
+      setImmediate(() => { if (!mainWindow.isDestroyed()) mainWindow.setSize(w, h); });
+    } catch (_) {}
     refreshTradingWebviewAfterRestore();
   } catch (e) {
     appendLog(`⚠ Tray restore failed: ${e.message}`, 'warn');
@@ -1844,6 +1869,174 @@ function testNousCredentials(apiKey, model) {
   });
 }
 
+// ── Free-model auto-ping on startup ────────────────────────────────────────
+// Pings every free model in the catalog with a tiny "Reply with: PONG" request,
+// picks the first one that returns a non-empty reply (a "pong"), auto-selects
+// it, and forwards the new model to the existing cron job WITHOUT touching
+// the user's cron prompt. This keeps Hermes on a working free model so the
+// user doesn't see "1 message" ticks where the model failed mid-turn.
+function pingNousModel(apiKey, model, timeoutMs = 25000) {
+  const key = String(apiKey || '').trim();
+  const mdl = normalizeNousModel(model);
+  if (!key) return Promise.resolve({ ok: false, error: 'no-api-key' });
+  if (!mdl) return Promise.resolve({ ok: false, error: 'no-model' });
+
+  const body = JSON.stringify({
+    model: mdl,
+    messages: [{ role: 'user', content: 'Reply with exactly: PONG' }],
+    max_tokens: 8,
+    temperature: 0,
+  });
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (r) => { if (!settled) { settled = true; resolve(r); } };
+    const req = https.request(NOUS_INFERENCE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`,
+        'Content-Length': Buffer.byteLength(body),
+        'User-Agent': 'KnightTrader-Blofin/1.0',
+      },
+      timeout: timeoutMs,
+    }, (res) => {
+      let raw = '';
+      res.on('data', (chunk) => { raw += chunk; });
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          let parsed = null;
+          try { parsed = JSON.parse(raw); } catch {}
+          const reply = parsed?.choices?.[0]?.message?.content?.trim()
+            || parsed?.choices?.[0]?.text?.trim()
+            || '';
+          // A "pong" is any non-empty 2xx reply. We accept anything that
+          // isn't an error/empty — free models sometimes echo extra text.
+          if (reply) {
+            done({ ok: true, model: mdl, reply });
+          } else {
+            done({ ok: false, error: 'empty-reply', model: mdl });
+          }
+        } else {
+          done({ ok: false, error: `http-${res.statusCode}`, model: mdl });
+        }
+      });
+    });
+    req.on('timeout', () => { req.destroy(); done({ ok: false, error: 'timeout', model: mdl }); });
+    req.on('error', (e) => done({ ok: false, error: e.message, model: mdl }));
+    req.write(body);
+    req.end();
+  });
+}
+
+async function getFreeModelCandidates() {
+  const catalog = await fetchNousModelCatalog();
+  const free = Array.isArray(catalog?.free) ? catalog.free.filter((m) => m?.id) : [];
+  return free.length ? free : FALLBACK_FREE_NOUS_MODELS;
+}
+
+async function autoSelectWorkingFreeModel() {
+  const apiKey = String(storeData.nous?.apiKey || '').trim();
+  if (!apiKey) {
+    appendLog('ℹ Skipping free-model auto-ping: no Nous API key saved.', 'info');
+    return { ok: false, reason: 'no-api-key' };
+  }
+
+  const candidates = await getFreeModelCandidates();
+  if (!candidates.length) {
+    appendLog('ℹ Skipping free-model auto-ping: no free models available.', 'info');
+    return { ok: false, reason: 'no-free-models' };
+  }
+
+  appendLog(`🔎 Auto-pinging ${candidates.length} free models to find a working one…`, 'info');
+  const current = normalizeNousModel(storeData.nous?.model || DEFAULT_NOUS_MODEL);
+
+  // Try the currently-selected model first (so we don't churn if it works),
+  // then the rest in catalog order.
+  const ordered = [
+    ...candidates.filter((m) => normalizeNousModel(m.id) === current),
+    ...candidates.filter((m) => normalizeNousModel(m.id) !== current),
+  ];
+
+  for (const m of ordered) {
+    const mdl = normalizeNousModel(m.id);
+    appendLog(`  → ping ${mdl}…`, 'info');
+    const res = await pingNousModel(apiKey, mdl, 25000);
+    if (res.ok) {
+      appendLog(`✅ Working free model found: ${mdl} — "${res.reply.slice(0, 40)}"`, 'success');
+      const changed = mdl !== current;
+      storeData.nous = { ...(storeData.nous || {}), model: mdl };
+      saveStore(storeData);
+      // Forward the new model to the cron job (preserves the user's prompt).
+      try {
+        await updateCronModelOnly(mdl);
+      } catch (e) {
+        appendLog(`ℹ Cron model forward skipped: ${e.message}`, 'info');
+      }
+      broadcastUpdate('kt-free-model-selected', { model: mdl, reply: res.reply, changed });
+      return { ok: true, model: mdl, reply: res.reply, changed };
+    }
+    appendLog(`  ✗ ${mdl}: ${res.error || 'no pong'}`, 'warn');
+  }
+
+  appendLog('⚠ No free model responded. Keeping current selection; cron may produce incomplete ticks.', 'warn');
+  broadcastUpdate('kt-free-model-selected', { model: current, changed: false, failed: true });
+  return { ok: false, reason: 'all-failed', model: current };
+}
+
+// Update ONLY the model field on the existing cron job, preserving the
+// user's prompt. If the job doesn't exist yet, do nothing — the next
+// "Configure cron" run will create it with the current model.
+async function updateCronModelOnly(model) {
+  const mdl = normalizeNousModel(model);
+  if (!mdl) return { ok: false, msg: 'No model' };
+  if (!(await probeDashboardPort())) {
+    return { ok: false, msg: 'Dashboard not running' };
+  }
+  let token;
+  try {
+    token = await fetchDashboardSessionToken();
+  } catch (e) {
+    return { ok: false, msg: e.message };
+  }
+
+  const list = await hermesApiRequest('GET', '/api/cron/jobs?profile=default', null, token);
+  if (list.status !== 200 || !Array.isArray(list.body)) {
+    return { ok: false, msg: `list failed (${list.status})` };
+  }
+  const existing = list.body.find((job) => job.name === 'blofin-equity-vertical');
+  if (!existing?.id) {
+    appendLog('ℹ Cron job not found yet — model will be used when cron is configured.', 'info');
+    return { ok: false, msg: 'no-existing-job' };
+  }
+
+  // Preserve the existing prompt; only swap model + provider/base_url.
+  const existingPrompt = existing.prompt || existing.spec?.prompt || null;
+  const updates = {
+    name: 'blofin-equity-vertical',
+    provider: 'custom',
+    base_url: NOUS_INFERENCE_BASE,
+    model: mdl,
+  };
+  if (existingPrompt) updates.prompt = existingPrompt;
+
+  const updated = await hermesApiRequest(
+    'PUT',
+    `/api/cron/jobs/${encodeURIComponent(existing.id)}?profile=default`,
+    { updates },
+    token,
+  );
+  if (updated.status < 300) {
+    appendLog(`✅ Cron model updated to ${mdl} (prompt preserved)`, 'success');
+    return { ok: true, jobId: existing.id, model: mdl };
+  }
+  const detail = typeof updated.body === 'object'
+    ? (updated.body.detail || JSON.stringify(updated.body))
+    : String(updated.body);
+  appendLog(`⚠ Cron model update failed (${updated.status}): ${detail}`, 'warn');
+  return { ok: false, msg: detail };
+}
+
 // ── Blofin API credential test ─────────────────────────────────────────────
 function signBlofinRequest(secret, method, path, timestamp, nonce, body = '') {
   const prehash = `${path}${method}${timestamp}${nonce}${body}`;
@@ -2041,6 +2234,7 @@ function registerIPC() {
   ipcMain.handle('get-compendium-path', () => getCompendiumPath());
   ipcMain.handle('test-nous-credentials', (_e, { apiKey, model }) => testNousCredentials(apiKey, model));
   ipcMain.handle('get-nous-models', () => fetchNousModelCatalog());
+  ipcMain.handle('auto-select-free-model', async () => autoSelectWorkingFreeModel());
   ipcMain.handle('test-blofin-credentials', (_e, creds) => testBlofinCredentials(creds));
   ipcMain.handle('pick-nous-credential-file', () => pickCredentialFile('nous'));
   ipcMain.handle('pick-blofin-credential-file', () => pickCredentialFile('blofin'));
@@ -2161,6 +2355,10 @@ function createWindow() {
       webviewTag: true,
       // Hardened for Windows 10 compatibility
       sandbox: true,
+      // Prevent the renderer/webviews from being throttled while the window
+      // is hidden in the tray — this is what made the app feel "frozen" on
+      // restore (webviews stopped repainting and never caught up).
+      backgroundThrottling: false,
       preload: path.join(__dirname, 'preload.js')
     },
     title: 'KnightTrader Blofin'
@@ -2459,6 +2657,16 @@ app.whenReady().then(async () => {
   else appendLog('⚠ BloHunter Connect not found — Trading tab needs Downloads\\blohunter-connect', 'warn');
   startBlohunterHotReloadWatcher();
   checkForUpdatesFromMain();
+
+  // Auto-ping free models on startup, pick the first that "pongs", and
+  // forward it to the cron job so the user doesn't see "1 message" ticks
+  // caused by a dead model. Only the model is updated — the user's cron
+  // prompt is preserved.
+  setTimeout(() => {
+    autoSelectWorkingFreeModel().catch((e) => {
+      appendLog(`ℹ Free-model auto-ping failed: ${e.message}`, 'info');
+    });
+  }, 8000);
 
   app.on('activate', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {

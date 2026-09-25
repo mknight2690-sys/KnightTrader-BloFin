@@ -1,6 +1,6 @@
 {
   "name": "knight-trader",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "KnightTrader Blofin - Hermes credential manager & launcher for Windows",
   "main": "main.js",
   "scripts": {
@@ -23,7 +23,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "differentialPackage": true
     },
     "mac": {
       "target": "dmg",
@@ -36,6 +37,7 @@
       "repo": "KnightTrader-BloFin",
       "releaseType": "release"
     },
+    "generateUpdatesFilesForAllChannels": true,
     "extraResources": [
       {
         "from": "python/",

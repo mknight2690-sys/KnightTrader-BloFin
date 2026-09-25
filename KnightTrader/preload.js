@@ -37,6 +37,12 @@ contextBridge.exposeInMainWorld('kt', {
   onUpdateNotAvailable: (cb) => ipcRenderer.on('update-not-available', (_, info) => cb(info)),
   onUpdateDownloaded: (cb) => ipcRenderer.on('update-downloaded', (_, info) => cb(info)),
   onUpdateError: (cb) => ipcRenderer.on('update-error', (_, error) => cb(error)),
+  // Tray / window restore events (fixes frozen-after-restore bug)
+  onRestoreTradingWebview: (cb) => ipcRenderer.on('kt-restore-trading-webview', () => cb()),
+  onWindowShown: (cb) => ipcRenderer.on('kt-window-shown', () => cb()),
+  // Free-model auto-selection
+  onFreeModelSelected: (cb) => ipcRenderer.on('kt-free-model-selected', (_e, info) => cb(info)),
+  autoSelectFreeModel: () => ipcRenderer.invoke('auto-select-free-model'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   quitAndInstallUpdate: () => ipcRenderer.invoke('quit-and-install-update'),
