@@ -7,12 +7,14 @@ let hermesInstalled = false;
 let dashboardRunning = false;
 let dashboardStartInFlight = false;
 let cachedAppVersion = '';
-// One-shot: on startup we land on the How-To tab and wait for the
-// dashboard+gateway running indicator to flash, THEN auto-switch to the
-// Trading tab. Guards so we only do this once and never override a tab
-// the user manually picked during that window.
+// One-shot: on startup we land on the Hermes tab so the user sees the
+// gateway + dashboard starting up, and once the running indicator
+// flashes we auto-switch — to the How-To tab for new users (no setup
+// yet), or the Trading tab for existing users. Guards so we only do
+// this once and never override a tab the user manually picked.
 let startupAutoSwitchArmed = true;
 let didStartupAutoSwitch = false;
+let hasBlofinCreds = false;
 
 // ── DOM shortcuts ─────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
@@ -164,6 +166,9 @@ async function init() {
       el.blofinSecretKey.value = creds.blofin.secretKey || '';
       el.blofinPassphrase.value = creds.blofin.passphrase || '';
       if (el.blofinDemoMode) el.blofinDemoMode.checked = !!creds.blofin.demoMode;
+      if (String(creds.blofin.apiKey || '').trim() && String(creds.blofin.secretKey || '').trim()) {
+        hasBlofinCreds = true;
+      }
     }
   } catch (e) {}
 
@@ -197,7 +202,7 @@ async function init() {
     if (ds.ready && ds.gatewayRunning) {
       setDashboardState(true, true, true);
       loadDashboard(ds.url || 'http://127.0.0.1:9119');
-      maybeStartupAutoSwitchToTrading();
+      maybeStartupAutoSwitch();
     } else {
       setDashboardState(false, false);
     }
@@ -222,8 +227,9 @@ async function init() {
     setDashboardState(true, true, d.gatewayRunning);
     loadDashboard(d.url);
     // Startup sequence: once the dashboard+gateway running indicator
-    // flashes, switch from the How-To tab to the Trading tab.
-    if (d.gatewayRunning) maybeStartupAutoSwitchToTrading();
+    // flashes, switch from the Hermes tab to the How-To tab (new users)
+    // or the Trading tab (existing users).
+    if (d.gatewayRunning) maybeStartupAutoSwitch();
   });
 
   window.kt.onDashboardStopped(() => {
@@ -244,13 +250,26 @@ async function init() {
   updateNousTestButton();
   updateBlofinTestButton();
 
-  // Startup sequence: land on the How-To tab first and WAIT there until
-  // the dashboard+gateway running indicator flashes (handled by
-  // maybeStartupAutoSwitchToTrading, wired into onDashboardReady and the
-  // initial dashboard-status check). Only then do we switch to the Trading
-  // tab. We do NOT restore the last tab on startup — the user wants a
-  // consistent howto → (running) → trading sequence every launch.
-  try { switchTab('howto'); } catch (_) {}
+  // Startup sequence: land on the Hermes tab first so the user sees the
+  // gateway + dashboard starting up (the running indicator lives here).
+  // Once the running indicator flashes, maybeStartupAutoSwitch() sends
+  // new users to the How-To tab and existing users to the Trading tab.
+  // We do NOT restore the last tab on startup — the user wants this
+  // consistent hermes → (running) → howto/trading sequence every launch.
+  try { switchTab('hermes'); } catch (_) {}
+
+  // Fallback for brand-new users: if Hermes isn't installed the running
+  // indicator will never flash, so after a short delay send them to the
+  // How-To tab (the setup guide) anyway.
+  if (!hermesInstalled) {
+    setTimeout(() => {
+      if (currentTab === 'hermes' && !didStartupAutoSwitch) {
+        startupAutoSwitchArmed = false;
+        didStartupAutoSwitch = true;
+        try { switchTab('howto'); } catch (_) {}
+      }
+    }, 2500);
+  }
 
   // Pre-warm the BloHunter trading desk in the background so the Trading
   // tab has live data the moment we switch to it. This just starts the
@@ -262,18 +281,19 @@ async function init() {
 
 // One-shot startup auto-switch: called when the dashboard+gateway running
 // indicator is confirmed. Gives the user a brief moment to see the
-// running indicator on the How-To tab, then switches to the Trading tab.
-// Cancels itself if the user has already manually navigated away from
-// the How-To tab during the wait.
-function maybeStartupAutoSwitchToTrading() {
+// running indicator on the Hermes tab, then switches to the How-To tab
+// for new users (no Blofin creds / Hermes not installed) or the Trading
+// tab for existing users. Cancels itself if the user has already
+// manually navigated away from the Hermes tab during the wait.
+function maybeStartupAutoSwitch() {
   if (!startupAutoSwitchArmed || didStartupAutoSwitch) return;
   startupAutoSwitchArmed = false;
   didStartupAutoSwitch = true;
   setTimeout(() => {
     // Don't override a tab the user picked themselves during the wait.
-    if (currentTab === 'howto') {
-      try { switchTab('trading'); } catch (_) {}
-    }
+    if (currentTab !== 'hermes') return;
+    const targetTab = (hermesInstalled && hasBlofinCreds) ? 'trading' : 'howto';
+    try { switchTab(targetTab); } catch (_) {}
   }, 1500);
 }
 
