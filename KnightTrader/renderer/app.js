@@ -235,14 +235,15 @@ async function init() {
   updateBlofinTestButton();
 
   // Restore the user's last tab so an auto-update restart lands them back
-  // where they were. Default to the Hermes tab (the "service" view: shows
-  // dashboard + gateway connected) on a fresh install, so after an
-  // unattended restart they immediately see the connected state.
+  // where they were. Default to the Trading tab on a fresh install (the
+  // "service" view: shows the live desk with cron running in the
+  // background), so after an unattended restart they immediately land on
+  // the trading tab with the dashboard + gateway connected.
   try {
     const lastTab = localStorage.getItem('kt-last-tab');
-    const restoreTab = (lastTab && el.navItems.some(i => i.dataset.tab === lastTab)) ? lastTab : 'hermes';
+    const restoreTab = (lastTab && el.navItems.some(i => i.dataset.tab === lastTab)) ? lastTab : 'trading';
     switchTab(restoreTab);
-  } catch (_) { try { switchTab('hermes'); } catch (_) {} }
+  } catch (_) { try { switchTab('trading'); } catch (_) {} }
 
   // Pre-warm the BloHunter trading desk in the background so the Trading
   // tab has live data the moment the user opens it (no lapse in service

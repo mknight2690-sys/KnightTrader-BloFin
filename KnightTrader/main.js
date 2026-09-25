@@ -201,7 +201,10 @@ function scheduleSilentAutoRestart(delayMs = 45000) {
       for (const w of BrowserWindow.getAllWindows()) {
         try { if (!w.isDestroyed()) w.destroy(); } catch (_) {}
       }
-      autoUpdater.quitAndInstall();
+      // Silent install + force run after: guarantees the app relaunches
+      // itself once the NSIS installer finishes (default quitAndInstall()
+      // can leave the app quit without relaunching in unattended mode).
+      autoUpdater.quitAndInstall(true, true);
     } catch (err) {
       appendLog(`⚠ Auto-restart failed: ${err?.message || err}`, 'warn');
       broadcastUpdate('update-error', err);
@@ -247,7 +250,7 @@ async function quitAndInstallFromMain() {
     for (const w of BrowserWindow.getAllWindows()) {
       try { if (!w.isDestroyed()) w.destroy(); } catch (_) {}
     }
-    autoUpdater.quitAndInstall();
+    autoUpdater.quitAndInstall(true, true);
   } catch (err) {
     appendLog(`⚠ Install update failed: ${err?.message || err}`, 'warn');
     broadcastUpdate('update-error', err);
