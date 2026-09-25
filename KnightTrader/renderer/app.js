@@ -233,6 +233,24 @@ async function init() {
 
   updateNousTestButton();
   updateBlofinTestButton();
+
+  // Restore the user's last tab so an auto-update restart lands them back
+  // where they were. Default to the Hermes tab (the "service" view: shows
+  // dashboard + gateway connected) on a fresh install, so after an
+  // unattended restart they immediately see the connected state.
+  try {
+    const lastTab = localStorage.getItem('kt-last-tab');
+    const restoreTab = (lastTab && el.navItems.some(i => i.dataset.tab === lastTab)) ? lastTab : 'hermes';
+    switchTab(restoreTab);
+  } catch (_) { try { switchTab('hermes'); } catch (_) {} }
+
+  // Pre-warm the BloHunter trading desk in the background so the Trading
+  // tab has live data the moment the user opens it (no lapse in service
+  // after an auto-restart). This just starts the bridge/SSE; the webview
+  // itself loads when the Trading tab is shown.
+  setTimeout(() => {
+    try { window.kt?.startTradingDashboard?.().catch(() => {}); } catch (_) {}
+  }, 12000);
 }
 
 // ── Hermes install check ──────────────────────────────────────
@@ -591,6 +609,9 @@ function switchTab(name) {
   if (name === 'hermes' && hermesInstalled && !dashboardRunning && !dashboardStartInFlight) {
     startHermesDashboardUi();
   }
+  // Remember the tab so an auto-update restart lands the user back where
+  // they were (no lapse in service / context).
+  try { localStorage.setItem('kt-last-tab', name); } catch (_) {}
 }
 
 async function loadTradingDesk(forceReload = false) {
