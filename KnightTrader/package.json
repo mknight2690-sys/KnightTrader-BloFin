@@ -25,7 +25,7 @@
       "perMachine": false,
       "deleteAppDataOnUninstall": false,
       "differentialPackage": true,
-      "include": "build/installer.nsh"
+      "include": "nsis/installer.nsh"
     },
     "mac": {
       "target": "dmg",
