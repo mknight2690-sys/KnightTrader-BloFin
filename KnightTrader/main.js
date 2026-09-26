@@ -185,46 +185,107 @@ async function ensureInstallerReady(timeoutMs = 180000) {
   return installerFileExists();
 }
 
-// Backup relaunch sentinel. The NSIS installer's own --force-run flag is
-// unreliable in unattended/silent mode, so before we quit we spawn a
-// detached, hidden process that waits for the OLD app to fully exit (so
-// the single-instance lock releases and the installer can replace files),
-// then retries launching the (now-updated) app exe until it succeeds.
+function psSingleQuoted(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+// Backup relaunch. The assisted NSIS installer is supposed to start the app
+// itself (--force-run), but that path uses ExecShellAsUser, which silently
+// no-ops when electron-updater spawned the installer. A child process we
+// spawn directly also dies with the app: Electron's Windows job object kills
+// it on quit, and launching the exe WHILE the installer is still replacing
+// files starts a process that taskkill/file-replace then destroys.
 //
-// The previous implementation used a fixed `timeout /t 12` then launched —
-// but if the NSIS silent install took longer than 12s, the launch hit an
-// exe still being replaced and silently failed, so the app never came back.
-// Waiting on the old PID + retrying the launch fixes that race.
+// This sentinel is started with `cmd /c start` so it breaks out of that job,
+// then waits until the Setup exe has exited before launching, and retries if
+// the new process dies immediately (single-instance collision / file lock).
 function spawnRelaunchSentinel() {
   try {
     const exePath = process.execPath;
     if (!exePath) return;
-    const oldPid = process.pid;
-    const safeExe = String(exePath).replace(/"/g, '""');
-    // PowerShell sentinel (always present on Win10/11):
-    //   1. Poll up to ~30s for the old app PID to disappear (lock release).
-    //   2. Settle 2s for the NSIS installer to finish replacing files.
-    //   3. Retry launching the exe for up to ~30s (installer may still be
-    //      finishing and holding the exe; Start-Process throws while it
-    //      does, and we retry until it succeeds).
-    const psScript = [
-      '$ErrorActionPreference="SilentlyContinue"',
-      `$oldPid=${oldPid}`,
-      `$exe="${safeExe}"`,
-      'for($i=0;$i -lt 60;$i++){ if(-not(Get-Process -Id $oldPid)){ break }; Start-Sleep -Milliseconds 500 }',
+    const scriptPath = path.join(os.tmpdir(), 'knighttrader-relaunch.ps1');
+    const logPath = path.join(os.tmpdir(), 'knighttrader-relaunch.log');
+    const script = [
+      "$ErrorActionPreference = 'Continue'",
+      `$log = ${psSingleQuoted(logPath)}`,
+      `$oldPid = ${Number(process.pid) || 0}`,
+      `$exe = ${psSingleQuoted(exePath)}`,
+      'function Log([string]$m) {',
+      "  Add-Content -LiteralPath $log -Value ((Get-Date -Format o) + ' ' + $m)",
+      '}',
+      "function InstallerRunning {",
+      "  $hit = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like 'KnightTrader-Blofin-Setup*' })",
+      '  return $hit.Length -gt 0',
+      '}',
+      "Log 'sentinel-start'",
+      '$deadline = (Get-Date).AddSeconds(120)',
+      'while ((Get-Date) -lt $deadline) {',
+      '  if (-not (Get-Process -Id $oldPid -ErrorAction SilentlyContinue)) { break }',
+      '  Start-Sleep -Milliseconds 400',
+      '}',
+      "Log 'old-pid-gone'",
       'Start-Sleep -Seconds 2',
-      'for($i=0;$i -lt 60;$i++){ try{ Start-Process -FilePath $exe -ErrorAction Stop; break }catch{ Start-Sleep -Milliseconds 500 } }',
-    ].join(';');
-    const child = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', psScript],
-      { detached: true, stdio: 'ignore', windowsHide: true }
-    );
+      '$seen = $false',
+      '$appearBy = (Get-Date).AddSeconds(45)',
+      'while ((Get-Date) -lt $appearBy) {',
+      '  if (InstallerRunning) { $seen = $true; break }',
+      '  Start-Sleep -Milliseconds 500',
+      '}',
+      "Log ('installer-seen=' + $seen)",
+      'if ($seen) {',
+      '  $doneBy = (Get-Date).AddMinutes(4)',
+      '  while ((Get-Date) -lt $doneBy) {',
+      '    if (-not (InstallerRunning)) { break }',
+      '    Start-Sleep -Seconds 1',
+      '  }',
+      "  Log 'installer-gone'",
+      '}',
+      'Start-Sleep -Seconds 2',
+      'for ($i = 0; $i -lt 12; $i++) {',
+      '  try {',
+      '    $p = Start-Process -FilePath $exe -PassThru -ErrorAction Stop',
+      '    Start-Sleep -Seconds 4',
+      '    if ($p -and -not $p.HasExited) {',
+      "      Log ('running pid=' + $p.Id)",
+      '      exit 0',
+      '    }',
+      "    Log ('exited-fast attempt=' + $i)",
+      '  } catch {',
+      "    Log ('start-failed attempt=' + $i + ' ' + $_.Exception.Message)",
+      '  }',
+      '  Start-Sleep -Seconds 2',
+      '}',
+      "Log 'gave-up'",
+    ].join('\r\n');
+    fs.writeFileSync(scriptPath, script, 'utf8');
+    // `start` ShellExecutes a new process outside Electron's job object, so
+    // it survives app.quit()/app.exit().
+    const child = spawn('cmd.exe', [
+      '/d', '/c',
+      `start "" /MIN powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${scriptPath}"`,
+    ], { detached: true, stdio: 'ignore', windowsHide: true });
     child.unref();
-    appendLog('🔁 Relaunch sentinel armed — app will restart after install', 'info');
+    appendLog(`🔁 Relaunch sentinel armed — log: ${logPath}`, 'info');
   } catch (e) {
     appendLog(`⚠ Relaunch sentinel failed: ${e?.message || e}`, 'warn');
   }
+}
+
+function beginSilentUpdateInstall() {
+  isQuittingForUpdate = true;
+  spawnRelaunchSentinel();
+  try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
+  for (const w of BrowserWindow.getAllWindows()) {
+    try { if (!w.isDestroyed()) w.destroy(); } catch (_) {}
+  }
+  try { app.releaseSingleInstanceLock(); } catch (_) {}
+  autoUpdater.quitAndInstall(true, true);
+  // quitAndInstall only queues app.quit() on the next tick. If a close
+  // handler still swallows that, force the process down so NSIS can replace
+  // files. The sentinel is already outside this process.
+  setTimeout(() => {
+    try { app.exit(0); } catch (_) {}
+  }, 4000).unref?.();
 }
 
 function scheduleSilentAutoRestart(delayMs = 45000) {
@@ -241,21 +302,7 @@ function scheduleSilentAutoRestart(delayMs = 45000) {
         return;
       }
       appendLog('🔄 Auto-restarting to install update…', 'success');
-      // Force-quit path: set the flag so the hide-on-close tray handler
-      // can't swallow the close, then destroy the tray + EVERY window
-      // (including the force-update modal and any hidden tray window) so
-      // app.quit() proceeds and the NSIS installer can run. This works
-      // even when the app was minimized to the tray.
-      isQuittingForUpdate = true;
-      spawnRelaunchSentinel();
-      try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
-      for (const w of BrowserWindow.getAllWindows()) {
-        try { if (!w.isDestroyed()) w.destroy(); } catch (_) {}
-      }
-      // Silent install + force run after: guarantees the app relaunches
-      // itself once the NSIS installer finishes (default quitAndInstall()
-      // can leave the app quit without relaunching in unattended mode).
-      autoUpdater.quitAndInstall(true, true);
+      beginSilentUpdateInstall();
     } catch (err) {
       appendLog(`⚠ Auto-restart failed: ${err?.message || err}`, 'warn');
       broadcastUpdate('update-error', err);
@@ -294,15 +341,7 @@ async function quitAndInstallFromMain() {
       broadcastUpdate('update-error', new Error('Installer download failed'));
       throw new Error('Installer download failed');
     }
-    // Destroy the tray + EVERY window so the NSIS installer can replace
-    // files. Force-quit path: bypass the hide-on-close tray handler.
-    isQuittingForUpdate = true;
-    spawnRelaunchSentinel();
-    try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
-    for (const w of BrowserWindow.getAllWindows()) {
-      try { if (!w.isDestroyed()) w.destroy(); } catch (_) {}
-    }
-    autoUpdater.quitAndInstall(true, true);
+    beginSilentUpdateInstall();
   } catch (err) {
     appendLog(`⚠ Install update failed: ${err?.message || err}`, 'warn');
     broadcastUpdate('update-error', err);
