@@ -1,6 +1,6 @@
 {
   "name": "knight-trader",
-  "version": "1.2.23",
+  "version": "1.2.24",
   "description": "KnightTrader Blofin - Hermes credential manager & launcher for Windows",
   "main": "main.js",
   "scripts": {
@@ -16,7 +16,7 @@
     "asar": true,
     "win": {
       "target": "nsis",
-      "icon": "assets/icon.ico",
+      "icon": "assets/icon-1024.png",
       "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
@@ -29,7 +29,7 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "assets/icon.icns",
+      "icon": "assets/icon-1024.png",
       "category": "public.app-category.finance"
     },
     "publish": {

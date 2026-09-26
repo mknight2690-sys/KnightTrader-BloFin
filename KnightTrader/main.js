@@ -1285,22 +1285,44 @@ function appendLog(msg, type = 'info') {
   } catch {} // window or webContents may be mid-destroy — swallow silently
 }
 
+function loadNativeImageFromAssets(candidates = []) {
+  for (const rel of candidates) {
+    const iconPath = path.join(__dirname, 'assets', rel);
+    if (!fs.existsSync(iconPath)) continue;
+    const image = nativeImage.createFromPath(iconPath);
+    if (!image.isEmpty()) return image;
+  }
+  return nativeImage.createEmpty();
+}
+
+function loadAppIcon() {
+  return loadNativeImageFromAssets([
+    'icon.png',
+    'icon-1024.png',
+    'icon.ico',
+  ]);
+}
+
+function loadTrayIcon() {
+  const tray = loadNativeImageFromAssets([
+    'tray-icon.ico',
+    'tray-icon.png',
+    'icon.ico',
+    'icon.png',
+  ]);
+  if (!tray.isEmpty()) {
+    const size = process.platform === 'darwin' ? 22 : 16;
+    return tray.resize({ width: size, height: size, quality: 'best' });
+  }
+  return tray;
+}
+
 function buildTray() {
   if (appTray) return;
   try {
-    const iconPaths = process.platform === 'win32'
-      ? [path.join(__dirname, 'assets', 'icon.ico'), path.join(__dirname, 'assets', 'icon.png')]
-      : [path.join(__dirname, 'assets', 'icon.png'), path.join(__dirname, 'assets', 'icon.ico')];
-    let image = nativeImage.createEmpty();
-    for (const iconPath of iconPaths) {
-      const icon = nativeImage.createFromPath(iconPath);
-      if (!icon.isEmpty()) {
-        image = icon;
-        break;
-      }
-    }
+    const image = loadTrayIcon();
     if (image.isEmpty()) {
-      image = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5gQWESo1yI6KEwAAAFZJREFUWMPt1zEOACAIA0D+/6cj2RkhsZkx29nZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnYIAQYAw9wJf1QAAAABJRU5ErkJggg==');
+      throw new Error('No tray icon assets found');
     }
     appTray = new Tray(image);
     appTray.setToolTip('KnightTrader Blofin');
@@ -2922,9 +2944,11 @@ function registerIPC() {
 
 // ── Window// ── Window ─────────────────────────────────────────────────────────────────
 function createWindow() {
+  const appIcon = loadAppIcon();
   mainWindow = new BrowserWindow({
     width: 1060, height: 740, minWidth: 860, minHeight: 600,
     frame: false, backgroundColor: '#090c10', show: false,
+    icon: appIcon.isEmpty() ? undefined : appIcon,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true, nodeIntegration: false,
@@ -3251,6 +3275,15 @@ app.whenReady().then(async () => {
   attachBhProtocol(session.fromPartition('persist:blohunter-trading'));
 
   registerIPC();
+  const appIcon = loadAppIcon();
+  if (!appIcon.isEmpty()) {
+    if (process.platform === 'win32') {
+      app.setAppUserModelId('com.knighttrader.blofin');
+    }
+    if (process.platform === 'darwin' && app.dock) {
+      app.dock.setIcon(appIcon);
+    }
+  }
   bootstrapBlofinFromCompendium();
   syncBlohunterCredentials().catch((e) => {
     appendLog(`ℹ BloHunter credential sync deferred: ${e.message}`, 'info');

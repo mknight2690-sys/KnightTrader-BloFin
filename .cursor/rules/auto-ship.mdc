@@ -1,0 +1,17 @@
+---
+description: Auto ship KnightTrader releases after meaningful changes
+alwaysApply: true
+---
+
+# Auto ship (no prompts)
+
+After completing any user-facing fix or feature in **KnightTrader** (`KnightTrader/`):
+
+1. Bump `KnightTrader/package.json` version (patch).
+2. Commit with `fix(vX.Y.Z): …` or `feat(vX.Y.Z): …`.
+3. Push `master` to `origin`.
+4. Create and push tag `vX.Y.Z` (triggers GitHub Actions macOS + Windows release).
+5. Update landing page (`knighttrader-blo-site-live`): `manifest.json` `latestVersion`, `main.js` `FALLBACK_TAG`, `index.html` download label — commit and push.
+6. Confirm release assets on GitHub (`KnightTrader-Blofin-Setup-*.exe`, `KnightTrader-Blofin-*-arm64.dmg`, `latest.yml`, `latest-mac.yml`).
+
+Do **not** ask whether to publish — ship automatically. Do **not** commit secrets, `.exe` installers in the repo, or user data. Skip ship only for docs-only / question-only tasks with zero runtime changes.
