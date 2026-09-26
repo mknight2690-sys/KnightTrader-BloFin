@@ -4,7 +4,7 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { BlohunterBridge } = require('./blohunter-bridge');
 const vpn = require('./vpn');
-const { spawn, execFileSync } = require('child_process');
+const { spawn, execFileSync, execSync } = require('child_process');
 const crypto = require('crypto');
 const http = require('http');
 const https = require('https');
@@ -14,6 +14,13 @@ const https = require('https');
 // restarts the app — no manual download/reinstall, no installer UI.
 const { autoUpdater } = require('electron-updater');
 const os = require('os');
+
+// Keep renderers + guest webviews alive while the window is hidden in the
+// tray. Without these, Chromium suspends painting/timers and restore feels
+// like a full freeze until the user clicks Reload or switches tabs.
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows', 'true');
 
 const UPDATE_OWNER = 'mknight2690-sys';
 const UPDATE_REPO = 'KnightTrader-BloFin';
@@ -1114,11 +1121,31 @@ function buildTray() {
   }
 }
 
+function unthrottleAllWebContents() {
+  for (const wc of webContents.getAllWebContents()) {
+    try { wc.setBackgroundThrottling(false); } catch (_) {}
+  }
+}
+
+function notifyRendererTrayRestore() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    unthrottleAllWebContents();
+    // One debounced handler in the renderer listens for both channels.
+    mainWindow.webContents.send('kt-window-shown');
+    mainWindow.webContents.send('kt-restore-trading-webview');
+  } catch (e) {
+    appendLog(`ℹ Tray restore notify skipped: ${e.message}`, 'info');
+  }
+}
+
 function restoreFromTray() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   try {
+    unthrottleAllWebContents();
     if (mainWindow.isMinimized()) mainWindow.restore();
     if (!mainWindow.isVisible()) mainWindow.show();
+    mainWindow.setSkipTaskbar(false);
     mainWindow.focus();
     // Nudge the renderer to repaint after being hidden. A hidden window can
     // leave webviews in a throttled/blank state; toggling the size by 0px
@@ -1128,20 +1155,17 @@ function restoreFromTray() {
       mainWindow.setSize(w, h + 1);
       setImmediate(() => { if (!mainWindow.isDestroyed()) mainWindow.setSize(w, h); });
     } catch (_) {}
-    refreshTradingWebviewAfterRestore();
+    // Wait until the window is actually visible/laid out before telling
+    // webviews to unpark/reload — reloading while still parked (0×0) was
+    // leaving the desk blank/frozen after tray restore.
+    setTimeout(() => notifyRendererTrayRestore(), 120);
   } catch (e) {
     appendLog(`⚠ Tray restore failed: ${e.message}`, 'warn');
   }
 }
 
 function refreshTradingWebviewAfterRestore() {
-  try {
-    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-      mainWindow.webContents.send('kt-restore-trading-webview');
-    }
-  } catch (e) {
-    appendLog(`ℹ Trading webview refresh skipped: ${e.message}`, 'info');
-  }
+  notifyRendererTrayRestore();
 }
 
 function quitFromTray() {
@@ -2683,12 +2707,15 @@ function createWindow() {
       // is hidden in the tray — this is what made the app feel "frozen" on
       // restore (webviews stopped repainting and never caught up).
       backgroundThrottling: false,
-      preload: path.join(__dirname, 'preload.js')
     },
     title: 'KnightTrader Blofin'
   });
+  try { mainWindow.webContents.setBackgroundThrottling(false); } catch (_) {}
   mainWindow.loadFile('renderer/index.html');
   mainWindow.once('ready-to-show', () => { mainWindow.show(); mainWindow.focus(); });
+  mainWindow.webContents.on('did-finish-load', () => {
+    try { mainWindow.webContents.setBackgroundThrottling(false); } catch (_) {}
+  });
   mainWindow.webContents.on('did-fail-load', (_e, code, desc) => {
     appendLog(`⚠ Failed to load UI: ${code} - ${desc}`, 'warn');
     mainWindow.show();
@@ -2702,8 +2729,9 @@ function createWindow() {
   });
   mainWindow.on('show', () => {
     try {
+      unthrottleAllWebContents();
       mainWindow.focus();
-      mainWindow.webContents.send('kt-window-shown');
+      setTimeout(() => notifyRendererTrayRestore(), 120);
     } catch (_) {}
   });
   mainWindow.on('close', (e) => {

@@ -249,6 +249,7 @@ async function init() {
 
   updateNousTestButton();
   updateBlofinTestButton();
+  bindHermesWebview();
 
   // Startup sequence: land on the Hermes tab first so the user sees the
   // gateway + dashboard starting up (the running indicator lives here).
@@ -386,6 +387,20 @@ async function startHermesDashboardUi() {
 function loadDashboard(url) {
   el.dashUrl.textContent = url;
   el.hermesWebview.src = url;
+}
+
+function bindHermesWebview() {
+  const webview = el.hermesWebview;
+  if (!webview || webview.dataset.bound === '1') return;
+  webview.dataset.bound = '1';
+  webview.addEventListener('did-attach', () => {
+    try {
+      window.kt.attachTradingWebview(webview.getWebContentsId()).catch(() => {});
+    } catch (_) {}
+  });
+  webview.addEventListener('dom-ready', () => {
+    parkWebview(webview, currentTab !== 'hermes');
+  });
 }
 
 // ── Credentials save ──────────────────────────────────────────
@@ -709,24 +724,59 @@ async function initTradingTab() {
   return tradingInitPromise;
 }
 
+let trayRestoreTimer = null;
+
+function restoreUiFromTray() {
+  if (trayRestoreTimer) clearTimeout(trayRestoreTimer);
+  trayRestoreTimer = setTimeout(() => {
+    trayRestoreTimer = null;
+    try {
+      // The bottom-left popup parks BOTH webviews off-screen; if it was
+      // open when the user minimized to tray, restore would look frozen.
+      if (el.popupMenu && !el.popupMenu.classList.contains('hidden')) {
+        setPopupOpen(false);
+      }
+
+      syncWebviewParking(currentTab);
+      void document.body.offsetHeight;
+
+      const guests = [
+        { vw: el.tradingWebview, tab: 'trading' },
+        { vw: el.hermesWebview, tab: 'hermes' },
+      ];
+
+      for (const { vw, tab } of guests) {
+        if (!vw) continue;
+        parkWebview(vw, currentTab !== tab);
+        if (!guestHasPage(vw)) continue;
+        try {
+          window.kt.attachTradingWebview(vw.getWebContentsId()).catch(() => {});
+        } catch (_) {}
+      }
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          for (const { vw } of guests) {
+            if (!vw || !guestHasPage(vw)) continue;
+            try {
+              vw.executeJavaScript('window.dispatchEvent(new Event("resize"))').catch(() => {});
+            } catch (_) {}
+          }
+
+          const active = guests.find((g) => g.tab === currentTab);
+          if (active?.vw && guestHasPage(active.vw)) {
+            try { active.vw.reload(); } catch (_) {}
+          } else if (currentTab === 'trading') {
+            initTradingTab();
+          }
+        });
+      });
+    } catch (_) {}
+  }, 80);
+}
+
 function handleTrayRestore() {
-  // The trading-desk webview stops painting while the window is hidden in
-  // the tray and comes back blank/frozen. A resize nudge alone isn't
-  // enough to wake it. A lightweight reload() of the CURRENT url forces a
-  // fresh render + SSE reconnect — the bridge keeps running, so data
-  // resumes within a second or two. This is much lighter than the old
-  // loadTradingDesk(true) path (which restarted the whole bridge and
-  // blocked the renderer). We reload regardless of the active tab so the
-  // desk is live by the time the user switches to it.
-  try {
-    syncWebviewParking(currentTab);
-    const vw = el.tradingWebview;
-    if (vw && guestHasPage(vw)) {
-      try { vw.reload(); } catch (_) {}
-    } else if (currentTab === 'trading') {
-      initTradingTab();
-    }
-  } catch (_) {}
+  restoreUiFromTray();
 }
 
 if (window.kt?.onLogLine) {
@@ -746,19 +796,9 @@ if (window.kt?.onRestoreTradingWebview) {
   window.kt.onRestoreTradingWebview(handleTrayRestore);
 }
 
-// Window shown: fires on first show AND on every restore from tray. Un-park
-// the active tab's webview and force a resize so it repaints.
+// Window shown: fires on first show AND on every restore from tray.
 if (window.kt?.onWindowShown) {
-  window.kt.onWindowShown(() => {
-    try {
-      syncWebviewParking(currentTab);
-      // Force webviews to re-layout after being hidden.
-      const vws = [el.tradingWebview, el.hermesWebview].filter(Boolean);
-      for (const vw of vws) {
-        try { vw.executeJavaScript('window.dispatchEvent(new Event("resize"))').catch(() => {}); } catch (_) {}
-      }
-    } catch (_) {}
-  });
+  window.kt.onWindowShown(restoreUiFromTray);
 }
 
 if (el.btnReloadTrading) {
