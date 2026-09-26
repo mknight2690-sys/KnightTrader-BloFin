@@ -315,8 +315,55 @@ function spawnRelaunchSentinel() {
   }
 }
 
-function beginSilentUpdateInstall() {
+function getAppExecutableFileName() {
+  return path.basename(process.execPath || 'KnightTrader Blofin.exe');
+}
+
+function killOtherAppInstances() {
+  if (process.platform !== 'win32') return;
+  const exeName = getAppExecutableFileName();
+  try {
+    execSync(
+      `taskkill /F /FI "PID ne ${process.pid}" /IM "${exeName}" /T`,
+      { timeout: 15000, stdio: 'ignore', windowsHide: true }
+    );
+  } catch (_) {}
+}
+
+function killHermesChildProcesses() {
+  if (process.platform !== 'win32') return;
+  try {
+    execSync('taskkill /F /IM "hermes.exe" /T', { timeout: 10000, stdio: 'ignore', windowsHide: true });
+  } catch (_) {}
+}
+
+async function shutdownAllServicesForInstall() {
+  const tasks = [
+    stopHermesDashboard().catch(() => {}),
+    stopTradingSystem().catch(() => {}),
+    getBlohunterBridge().stop().catch(() => {}),
+  ];
+  await Promise.race([
+    Promise.all(tasks),
+    new Promise((resolve) => setTimeout(resolve, 8000)),
+  ]);
+  killHermesChildProcesses();
+  killOtherAppInstances();
+}
+
+async function beginSilentUpdateInstall() {
   isQuittingForUpdate = true;
+  appendLog('🔄 Shutting down for update (tray + Hermes + desk)…', 'info');
+  try {
+    fs.writeFileSync(
+      path.join(app.getPath('userData'), 'kt-installing.lock'),
+      String(Date.now()),
+      'utf8'
+    );
+  } catch (_) {}
+
+  await shutdownAllServicesForInstall();
+
   spawnRelaunchSentinel();
   try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
   for (const w of BrowserWindow.getAllWindows()) {
@@ -346,7 +393,7 @@ function scheduleSilentAutoRestart(delayMs = 45000) {
         return;
       }
       appendLog('🔄 Auto-restarting to install update…', 'success');
-      beginSilentUpdateInstall();
+      await beginSilentUpdateInstall();
     } catch (err) {
       appendLog(`⚠ Auto-restart failed: ${err?.message || err}`, 'warn');
       broadcastUpdate('update-error', err);
@@ -459,7 +506,7 @@ async function quitAndInstallFromMain() {
       broadcastUpdate('update-error', new Error(err));
       return { ok: false, error: err };
     }
-    beginSilentUpdateInstall();
+    await beginSilentUpdateInstall();
     return { ok: true, installing: true, version: updateDownloadedInfo?.version || null };
   } catch (err) {
     appendLog(`⚠ Install update failed: ${err?.message || err}`, 'warn');
@@ -2985,22 +3032,21 @@ function attachBhProtocol(ses) {
 const PID_FILE = path.join(app.getPath('userData'), 'kt-instance.pid');
 
 function forceKillExistingInstance() {
+  killOtherAppInstances();
   try {
     if (fs.existsSync(PID_FILE)) {
       const pid = fs.readFileSync(PID_FILE, 'utf8').trim();
       if (pid && pid !== String(process.pid)) {
         try {
-          execSync('taskkill /F /PID ' + pid + ' /T', { timeout: 10000 });
+          execSync(`taskkill /F /PID ${pid} /T`, { timeout: 10000, stdio: 'ignore', windowsHide: true });
           appendLog('Terminated existing instance (PID ' + pid + ')', 'success');
         } catch (e) {
-          // Process may have already exited
           try { appendLog('Could not kill PID ' + pid + ': ' + e.message, 'warn'); } catch {}
         }
       }
     }
-  } catch {}
-  // Write our own PID
-  try { fs.writeFileSync(PID_FILE, String(process.pid)); } catch {}
+  } catch (_) {}
+  try { fs.writeFileSync(PID_FILE, String(process.pid)); } catch (_) {}
 }
 
 forceKillExistingInstance();
@@ -3243,6 +3289,7 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 // nothing can abort app.quit() and block the NSIS installer.
 app.on('before-quit', () => {
   if (!isQuittingForUpdate) return;
+  try { killHermesChildProcesses(); } catch (_) {}
   for (const w of BrowserWindow.getAllWindows()) {
     try { if (!w.isDestroyed()) w.destroy(); } catch (_) {}
   }

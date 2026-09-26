@@ -102,53 +102,81 @@ function isOpenPositionVoiceBaselined() {
 
 let previousOpenPositionKeys = loadStoredOpenPositionKeys();
 
+let openPositionVoiceEmptyStreak = 0;
+
+function normalizeVoiceSymbol(raw) {
+  return String(raw || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .replace(/(USDT|USD|PERP|SWAP)$/g, '');
+}
+
+function normalizeVoiceSide(raw) {
+  const side = String(raw || '').trim().toLowerCase();
+  if (!side) return '';
+  if (side.includes('short') || side === 'sell') return 'short';
+  if (side.includes('long') || side === 'buy' || side === 'net') return 'long';
+  return '';
+}
+
 function positionKeyFor(position = {}) {
-  const symbol = String(position?.contract || position?.symbol || '').trim().toUpperCase();
-  const side = String(position?.side || '').trim().toLowerCase();
+  const symbol = normalizeVoiceSymbol(position?.contract || position?.symbol || position?.instId);
+  const side = normalizeVoiceSide(position?.side || position?.positionSide || position?.posSide);
   if (!symbol || !side) return null;
   return `${symbol}:${side}`;
 }
 
 function positionLabel(position = {}) {
-  const symbol = String(position?.contract || position?.symbol || '').trim();
-  const side = String(position?.side || '').trim();
-  return symbol ? (side ? `${side} ${symbol}` : symbol) : 'position';
+  const symbol = normalizeVoiceSymbol(position?.contract || position?.symbol || position?.instId);
+  const side = normalizeVoiceSide(position?.side || position?.positionSide || position?.posSide);
+  if (!symbol) return '';
+  return side ? `${side} ${symbol}` : symbol;
 }
 
-function announceOpenPositionChanges(openPositions = []) {
-  if (!isDashboardSoundEnabled()) return;
-  const nextKeys = new Set();
-  const seen = new Set();
-  for (const position of openPositions) {
+function announceOpenPositionChanges(openPositions = [], { unavailable = false } = {}) {
+  if (!isDashboardSoundEnabled() || unavailable) return;
+
+  const nextKeys = new Map();
+  for (const position of openPositions || []) {
     const key = positionKeyFor(position);
-    if (!key) continue;
-    nextKeys.add(key);
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const label = positionLabel(position);
+    if (!key || !label || nextKeys.has(key)) continue;
+    nextKeys.set(key, label);
+  }
 
-    // First snapshot after load: seed baseline silently — never read out
-    // positions already open on the book.
-    if (!isOpenPositionVoiceBaselined()) continue;
-
-    if (!previousOpenPositionKeys.has(key)) {
-      enqueueDashboardVoiceMessage(`Opened ${positionLabel(position)}`);
-    }
+  // A blank book while we already track positions is usually a failed read,
+  // not ten closes. Ignore it unless it stays empty.
+  if (nextKeys.size === 0 && previousOpenPositionKeys.size > 0) {
+    openPositionVoiceEmptyStreak += 1;
+    if (openPositionVoiceEmptyStreak < 3) return;
+  } else {
+    openPositionVoiceEmptyStreak = 0;
   }
 
   if (!isOpenPositionVoiceBaselined()) {
-    previousOpenPositionKeys = nextKeys;
-    storeOpenPositionKeys(nextKeys);
+    previousOpenPositionKeys = new Set(nextKeys.keys());
+    storeOpenPositionKeys(previousOpenPositionKeys);
     return;
   }
 
+  const opened = [];
+  const closed = [];
+  for (const [key, label] of nextKeys) {
+    if (!previousOpenPositionKeys.has(key)) opened.push(label);
+  }
   for (const key of previousOpenPositionKeys) {
     if (!nextKeys.has(key)) {
-      const label = key.includes(':') ? key.replace(':', ' ') : key;
-      enqueueDashboardVoiceMessage(`Closed ${label}`);
+      closed.push(key.includes(':') ? key.replace(':', ' ').toLowerCase() : key);
     }
   }
-  previousOpenPositionKeys = nextKeys;
-  storeOpenPositionKeys(nextKeys);
+
+  previousOpenPositionKeys = new Set(nextKeys.keys());
+  storeOpenPositionKeys(previousOpenPositionKeys);
+
+  // One fill per refresh. A full-book rewrite (source swap, reload) stays silent.
+  if (opened.length + closed.length !== 1) return;
+  if (opened.length === 1) enqueueDashboardVoiceMessage(`Opened ${opened[0]}`);
+  else enqueueDashboardVoiceMessage(`Closed ${closed[0]}`);
 }
 
 let livePillOverride = null;
@@ -529,7 +557,7 @@ function renderDashboard(snapshot) {
         unavailable: openPositionsUnavailable,
       }
     );
-    announceOpenPositionChanges(openPositionsList);
+    announceOpenPositionChanges(openPositionsList, { unavailable: openPositionsUnavailable });
   }
   fireLiquidationWarnings(openPositions || []);
   const recentClosedList = recentClosed || [];
