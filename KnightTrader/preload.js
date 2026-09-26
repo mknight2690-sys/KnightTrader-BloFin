@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('kt', {
   onFreeModelSelected: (cb) => ipcRenderer.on('kt-free-model-selected', (_e, info) => cb(info)),
   autoSelectFreeModel: () => ipcRenderer.invoke('auto-select-free-model'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  getUpdateStatus: () => ipcRenderer.invoke('get-update-status'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   quitAndInstallUpdate: () => ipcRenderer.invoke('quit-and-install-update'),
 

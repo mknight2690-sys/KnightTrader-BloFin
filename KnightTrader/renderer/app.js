@@ -1131,8 +1131,23 @@ function setUpdateBannerVisible(visible, title, text) {
 }
 
 if (el.btnRestartUpdate) {
-  el.btnRestartUpdate.addEventListener('click', () => {
-    window.kt.quitAndInstallUpdate().catch(() => {});
+  el.btnRestartUpdate.addEventListener('click', async () => {
+    el.btnRestartUpdate.disabled = true;
+    setUpdateBannerVisible(true, 'Installing update', 'Downloading if needed, then restarting…');
+    setPopupUpdateStatus('Installing update…');
+    try {
+      const res = await window.kt.quitAndInstallUpdate();
+      if (res?.ok && res?.installing) return;
+      const err = res?.error || 'Update could not be installed';
+      setUpdateBannerVisible(true, 'Update failed', err);
+      setPopupUpdateStatus(err);
+      el.btnRestartUpdate.disabled = false;
+    } catch (e) {
+      const err = e?.message || 'Update failed';
+      setUpdateBannerVisible(true, 'Update failed', err);
+      setPopupUpdateStatus(err);
+      el.btnRestartUpdate.disabled = false;
+    }
   });
 }
 if (el.btnDismissUpdate) {
@@ -1146,7 +1161,14 @@ window.kt.onUpdateAvailable((info) => {
   setPopupUpdateStatus('Update available — restart to install');
 });
 window.kt.onUpdateNotAvailable((info) => {
-  setPopupUpdateStatus('You’re on the latest version');
+  const remote = info?.remoteVersion || info?.version || '';
+  const current = cachedAppVersion || info?.version || '';
+  if (remote && current && remote !== current) {
+    setPopupUpdateStatus(`Update ${remote} available — restart to install`);
+    setUpdateBannerVisible(true, 'Update available', `Version ${remote} is ready — click Restart & Update.`);
+    return;
+  }
+  setPopupUpdateStatus(`Up to date (${current || 'latest'})`);
 });
 window.kt.onUpdateDownloaded((info) => {
   setUpdateBannerVisible(true, 'Update ready', 'Restart to apply the latest version.');
@@ -1313,18 +1335,24 @@ async function checkForUpdatesFromMenu() {
   setPopupUpdateStatus('Checking for updates…');
   setPopupUpdateButtonDisabled(true);
   try {
-    await window.kt.checkForUpdates();
+    const res = await window.kt.checkForUpdates();
+    if (res?.updateAvailable) {
+      const remote = res.remoteVersion || res.version || 'latest';
+      setPopupUpdateStatus(res.downloaded ? `Update ${remote} ready — restart` : `Update ${remote} downloading…`);
+      setUpdateBannerVisible(true, 'Update available', res.downloaded
+        ? 'Restart to apply the latest version.'
+        : 'Downloading update — restart when ready.');
+    } else if (res?.error) {
+      setPopupUpdateStatus(String(res.error).slice(0, 80));
+    } else if (res?.packaged === false) {
+      setPopupUpdateStatus('Dev mode — updates apply to installed app only');
+    } else {
+      setPopupUpdateStatus(`Up to date (${res?.version || cachedAppVersion || 'latest'})`);
+    }
   } catch (e) {
-    const msg = e?.message || 'Update check failed';
-    setPopupUpdateStatus(msg);
+    setPopupUpdateStatus(e?.message || 'Update check failed');
   } finally {
     setPopupUpdateButtonDisabled(false);
-    setTimeout(() => {
-      const node = el.popupMenu?.querySelector('#popup-update-status');
-      if (node && node.textContent === 'Checking for updates…') {
-        node.textContent = DEFAULT_UPDATE_STATUS;
-      }
-    }, 1500);
   }
 }
 

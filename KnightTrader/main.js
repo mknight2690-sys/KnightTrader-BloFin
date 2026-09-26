@@ -58,6 +58,43 @@ async function fetchLatestRelease() {
   if (!resp.ok) throw new Error(`GitHub release check failed: ${resp.status} ${resp.statusText}`);
   return await resp.json();
 }
+
+async function resolveLatestRemoteVersion() {
+  const versions = [];
+  try {
+    const manifest = await fetchUpdateManifest();
+    if (manifest?.latestVersion) versions.push(normalizeVersion(manifest.latestVersion));
+  } catch (_) {}
+  try {
+    const rel = await fetchLatestRelease();
+    if (rel?.tag_name) versions.push(normalizeVersion(rel.tag_name));
+  } catch (e) {
+    appendLog(`ℹ GitHub release lookup failed: ${e.message}`, 'info');
+  }
+  versions.sort((a, b) => compareVersions(b, a));
+  return versions[0] || '';
+}
+
+function configureGenericUpdateFeed(version) {
+  const ver = normalizeVersion(version);
+  if (!ver) return;
+  const tag = ver.startsWith('v') ? ver : `v${ver}`;
+  autoUpdater.setFeedURL({
+    provider: 'generic',
+    url: `https://github.com/${UPDATE_OWNER}/${UPDATE_REPO}/releases/download/${tag}/`,
+  });
+  appendLog(`🔗 Update feed → ${tag}`, 'info');
+}
+
+function getUpdateStatusSnapshot() {
+  return {
+    packaged: app.isPackaged,
+    currentVersion: app.getVersion(),
+    downloadedVersion: updateDownloadedInfo?.version || null,
+    installerReady: installerFileExists(),
+    pendingRestart: !!(updateDownloadedInfo && installerFileExists()),
+  };
+}
 async function downloadFileToPath(url, dest) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
@@ -318,41 +355,116 @@ function scheduleSilentAutoRestart(delayMs = 45000) {
   }, delayMs).unref?.();
 }
 
+async function waitForDownloadedUpdate(timeoutMs = 180000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!updateDownloadedInfo && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return !!(updateDownloadedInfo && installerFileExists());
+}
+
 async function checkForUpdatesFromMain() {
+  const current = app.getVersion();
+  if (!app.isPackaged) {
+    appendLog('ℹ Skipping auto-update in unpackaged/dev mode', 'info');
+    broadcastUpdate('update-not-available', { version: current });
+    return { ok: true, packaged: false, version: current, updateAvailable: false };
+  }
+
+  let primaryError = null;
   try {
     await autoUpdater.checkForUpdates();
   } catch (err) {
-    appendLog(`⚠ Update check failed: ${err?.message || err}`, 'warn');
-    broadcastUpdate('update-error', err);
+    primaryError = err;
+    appendLog(`⚠ electron-updater check failed: ${err?.message || err}`, 'warn');
   }
+
+  const remote = await resolveLatestRemoteVersion();
+  const updateAvailable = !!(remote && compareVersions(current, remote) < 0);
+
+  if (updateAvailable) {
+    appendLog(`⬆ Update available: ${remote} (installed ${current})`, 'success');
+    broadcastUpdate('update-available', { version: remote });
+    configureGenericUpdateFeed(remote);
+    try {
+      await autoUpdater.checkForUpdates();
+    } catch (err) {
+      appendLog(`⚠ Fallback update feed failed: ${err?.message || err}`, 'warn');
+      broadcastUpdate('update-error', err);
+      return {
+        ok: false,
+        version: current,
+        remoteVersion: remote,
+        updateAvailable: true,
+        error: err?.message || String(err),
+      };
+    }
+    await waitForDownloadedUpdate(120000);
+    if (updateDownloadedInfo) {
+      broadcastUpdate('update-downloaded', { version: updateDownloadedInfo.version || remote });
+    }
+    return {
+      ok: true,
+      version: current,
+      remoteVersion: remote,
+      updateAvailable: true,
+      downloaded: installerFileExists(),
+      ...getUpdateStatusSnapshot(),
+    };
+  }
+
+  if (primaryError) {
+    broadcastUpdate('update-error', primaryError);
+    return { ok: false, version: current, remoteVersion: remote || current, error: primaryError.message };
+  }
+
+  appendLog(`✅ Up to date: ${current}`, 'info');
+  broadcastUpdate('update-not-available', { version: current, remoteVersion: remote || current });
+  return {
+    ok: true,
+    version: current,
+    remoteVersion: remote || current,
+    updateAvailable: false,
+    ...getUpdateStatusSnapshot(),
+  };
 }
 
 async function quitAndInstallFromMain() {
+  if (!app.isPackaged) {
+    return { ok: false, error: 'Updates install only in the packaged app' };
+  }
   try {
+    appendLog('🔄 Restart & Update requested…', 'info');
+    if (!updateDownloadedInfo || !installerFileExists()) {
+      await checkForUpdatesFromMain();
+    }
     if (!updateDownloadedInfo) {
-      // No update known yet — trigger a check, which will auto-download
-      // (autoDownload = true). If an update is found it will arrive shortly.
-      appendLog('⏳ No update downloaded yet — checking now…', 'info');
-      await autoUpdater.checkForUpdates();
-      const deadline = Date.now() + 60000;
-      while (!updateDownloadedInfo && Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 1000));
+      const remote = await resolveLatestRemoteVersion();
+      const current = app.getVersion();
+      if (remote && compareVersions(current, remote) < 0) {
+        configureGenericUpdateFeed(remote);
+        appendLog('⏳ Downloading update before restart…', 'info');
+        try {
+          await autoUpdater.checkForUpdates();
+        } catch (e) {
+          appendLog(`⚠ Pre-install download check failed: ${e.message}`, 'warn');
+        }
+        await waitForDownloadedUpdate(180000);
       }
     }
-    // Verify the installer file is actually on disk before we tear the
-    // app down. Re-download if it's missing (fixes the "Windows cannot
-    // find …Setup-x.y.z.exe" error from a cleared/partial staging dir).
-    const ready = await ensureInstallerReady();
+    const ready = await ensureInstallerReady(180000);
     if (!ready) {
-      appendLog('⚠ Update installer could not be downloaded — aborting restart', 'warn');
-      broadcastUpdate('update-error', new Error('Installer download failed'));
-      throw new Error('Installer download failed');
+      const err = 'Update installer could not be downloaded';
+      appendLog(`⚠ ${err}`, 'warn');
+      broadcastUpdate('update-error', new Error(err));
+      return { ok: false, error: err };
     }
     beginSilentUpdateInstall();
+    return { ok: true, installing: true, version: updateDownloadedInfo?.version || null };
   } catch (err) {
     appendLog(`⚠ Install update failed: ${err?.message || err}`, 'warn');
     broadcastUpdate('update-error', err);
-    throw err;
+    return { ok: false, error: err?.message || String(err) };
   }
 }
 
@@ -2635,10 +2747,8 @@ function registerIPC() {
   ipcMain.handle('get-hermes-home',   () => HERMES_HOME);
   ipcMain.handle('get-logs',          () => logBuffer);
   ipcMain.handle('clear-logs',        () => { logBuffer = []; return { ok: true }; });
-  ipcMain.handle('check-for-updates', async () => {
-    await checkForUpdatesFromMain();
-    return { ok: true };
-  });
+  ipcMain.handle('check-for-updates', () => checkForUpdatesFromMain());
+  ipcMain.handle('get-update-status', () => getUpdateStatusSnapshot());
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('factory-reset', async () => {
     const result = factoryResetLocalState();
@@ -2648,9 +2758,7 @@ function registerIPC() {
     app.relaunch();
     app.quit();
   });
-  ipcMain.handle('quit-and-install-update', async () => {
-    await quitAndInstallFromMain();
-  });
+  ipcMain.handle('quit-and-install-update', () => quitAndInstallFromMain());
   ipcMain.handle('open-external',     (_e, url) => shell.openExternal(url));
 
   // --- Proprietary VPN controller (WireGuard / ProtonVPN) ---
@@ -3085,7 +3193,13 @@ app.whenReady().then(async () => {
   if (bhRoot) appendLog(`📈 BloHunter Connect: ${bhRoot}`, 'info');
   else appendLog('⚠ BloHunter Connect not found — Trading tab needs Downloads\\blohunter-connect', 'warn');
   startBlohunterHotReloadWatcher();
-  checkForUpdatesFromMain();
+  checkForUpdatesFromMain().then(() => {
+    if (updateDownloadedInfo && installerFileExists()) {
+      broadcastUpdate('update-downloaded', {
+        version: updateDownloadedInfo.version || app.getVersion(),
+      });
+    }
+  }).catch(() => {});
 
   // Poll for updates frequently so a newly published release triggers an
   // immediate cascade of auto-restarts across all running instances
