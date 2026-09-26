@@ -721,10 +721,7 @@ async function initTradingTab() {
   tradingInitPromise = (async () => {
     try {
       await loadTradingDesk(false);
-      if (!tradingFirstLoadWelcomed) {
-        tradingFirstLoadWelcomed = true;
-        window.kt?.announceVoice?.('Welcome to KnightTrader BloFin').catch(() => {});
-      }
+      tradingFirstLoadWelcomed = true;
     } catch (_) {}
     finally { tradingInitPromise = null; }
   })();

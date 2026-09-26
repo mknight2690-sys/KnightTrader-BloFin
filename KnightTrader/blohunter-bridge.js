@@ -1517,6 +1517,16 @@ class BlohunterBridge {
       };
     }
     if (!this.connectRoot) return { ok: false, status: 404 };
+    const overrideRoot = path.join(__dirname, 'blohunter', 'overrides');
+    const overrideAbs = path.normalize(path.join(overrideRoot, clean));
+    if (isPathInside(overrideRoot, overrideAbs) && fs.existsSync(overrideAbs) && fs.statSync(overrideAbs).isFile()) {
+      return {
+        ok: true,
+        filePath: overrideAbs,
+        contentType: MIME_TYPES[path.extname(overrideAbs).toLowerCase()] || 'application/octet-stream',
+        injectSkin: path.basename(overrideAbs) === 'dashboard.html',
+      };
+    }
     const abs = path.normalize(path.join(this.connectRoot, clean));
     if (!isPathInside(this.connectRoot, abs)) return { ok: false, status: 404 };
     if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) return { ok: false, status: 404 };
