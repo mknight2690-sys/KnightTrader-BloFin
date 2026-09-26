@@ -508,6 +508,27 @@ class BlohunterBridge {
     this.gateTimer = null;
     this.handshakeTimer = null;
     this.dashboardFetchTail = Promise.resolve();
+    this.pendingCreds = null;
+    this.livePollTimer = null;
+  }
+
+  getBlofinCreds() {
+    const pending = this.pendingCreds || {};
+    const pendingKey = String(pending.apiKey || '').trim();
+    if (pendingKey) {
+      return {
+        apiKey: pendingKey,
+        secret: String(pending.secretKey || pending.secret || '').trim(),
+        passphrase: String(pending.passphrase || '').trim(),
+      };
+    }
+    this.storage.load();
+    const session = this.storage.pick('session', ['apiKey', 'secret', 'passphrase']);
+    return {
+      apiKey: String(session.apiKey || '').trim(),
+      secret: String(session.secret || '').trim(),
+      passphrase: String(session.passphrase || '').trim(),
+    };
   }
 
   getConnectRoot() {
@@ -529,13 +550,37 @@ class BlohunterBridge {
   }
 
   async syncCredentials({ apiKey, secretKey, passphrase, demoMode = false }) {
-    this.demoMode = !!demoMode;
+    const nextKey = String(apiKey || '').trim();
+    const nextSecret = String(secretKey || '').trim();
+    const nextPass = String(passphrase || '').trim();
     this.storage.load();
+    const existing = this.storage.pick('session', ['apiKey', 'secret', 'passphrase']);
+    const hasIncoming = !!(nextKey && nextSecret && nextPass);
+    const hasExisting = !!(
+      String(existing.apiKey || '').trim()
+      && String(existing.secret || '').trim()
+      && String(existing.passphrase || '').trim()
+    );
+    if (!hasIncoming) {
+      if (hasExisting) {
+        this.pendingCreds = {
+          apiKey: existing.apiKey,
+          secretKey: existing.secret,
+          passphrase: existing.passphrase,
+          demoMode: this.demoMode,
+        };
+      }
+      return;
+    }
+    this.demoMode = demoMode !== undefined ? !!demoMode : this.demoMode;
+    this.pendingCreds = { apiKey: nextKey, secretKey: nextSecret, passphrase: nextPass, demoMode: this.demoMode };
+    this.liveBlofinCache = null;
+    this.liveBlofinCacheAt = 0;
     const now = Date.now();
     await this.storage.setArea('session', {
-      apiKey: String(apiKey || '').trim(),
-      secret: String(secretKey || '').trim(),
-      passphrase: String(passphrase || '').trim(),
+      apiKey: nextKey,
+      secret: nextSecret,
+      passphrase: nextPass,
       vault_unlocked: true,
       vault_unlocked_at: now,
     });
@@ -714,9 +759,8 @@ class BlohunterBridge {
 
   async seedEquityCurveFromAccount() {
     if (!this.connectRoot) return;
-    this.storage.load();
-    const keys = this.storage.pick('session', ['apiKey']);
-    if (!String(keys.apiKey || '').trim()) {
+    const creds = this.getBlofinCreds();
+    if (!creds.apiKey) {
       this.ensureGrowthChartLayout();
       this.log('[BloHunter] Equity curve: waiting for Blofin keys');
       return;
@@ -913,6 +957,93 @@ class BlohunterBridge {
     }
   }
 
+  mapLiveOpenPositions(rawPositions = []) {
+    return rawPositions
+      .filter(isUsdtMarginedPerpetual)
+      .map((position) => {
+        const side = String(position.positionSide || position.posSide || position.side || 'long').toLowerCase();
+        const symbol = String(position.instId || position.symbol || '').replace(/-USDT.*/i, '');
+        return {
+          contract: position.instId || position.symbol || '',
+          side: side.includes('short') ? 'short' : 'long',
+          symbol,
+          leverage: firstNumber(position.leverage, 0),
+          marginMode: position.marginMode || 'isolated',
+          pnlUsd: firstNumber(position.unrealizedPnl, position.pnl),
+          pnlPct: firstNumber(position.unrealizedPnlRatio, position.pnlRatio) * 100,
+          margin: firstNumber(position.margin, position.initialMargin),
+          amount: firstNumber(position.positions, position.size, position.availPos),
+          avgPrice: firstNumber(position.averagePrice, position.avgPrice, position.openPrice),
+          liqPrice: firstNumber(position.liquidationPrice, position.liqPrice),
+          markPrice: firstNumber(position.markPrice, position.lastPrice),
+          manualPosition: false,
+        };
+      });
+  }
+
+  mapLiveClosedPositions(rawHistory = []) {
+    return rawHistory
+      .filter(isUsdtMarginedPerpetual)
+      .map((record) => {
+        const side = String(record.positionSide || record.posSide || record.side || 'long').toLowerCase();
+        const symbol = String(record.instId || record.symbol || '').replace(/-USDT.*/i, '');
+        const closedAt = firstNumber(record.closeTime, record.uTime, record.updateTime, record.cTime);
+        const entryPrice = firstNumber(
+          record.openAveragePrice,
+          record.openAvgPrice,
+          record.avgOpenPrice,
+          record.openPrice,
+          record.entryPrice
+        );
+        const exitPrice = firstNumber(
+          record.closeAveragePrice,
+          record.closeAvgPrice,
+          record.avgClosePrice,
+          record.closePrice,
+          record.exitPrice
+        );
+        return {
+          symbol,
+          contract: record.instId || record.symbol || '',
+          pair: record.instId || record.symbol || '',
+          side: side.includes('short') ? 'short' : 'long',
+          positionKey: `${symbol}:${side.includes('short') ? 'short' : 'long'}`,
+          leverage: firstNumber(record.leverage, 0),
+          closeReason: 'history-only',
+          manualPosition: false,
+          pnlUsd: firstNumber(record.realizedPnl, record.pnl),
+          pnlPct: firstNumber(record.realizedPnlRatio, record.pnlRatio) * 100,
+          amount: firstNumber(record.closeTotalPos, record.positions, record.size),
+          entryPrice,
+          exitPrice,
+          closedAt,
+          source: 'direct-blofin-rest',
+          sourceConfidence: entryPrice > 0 && exitPrice > 0 ? 'high' : 'history-only',
+          liquidationDetected: false,
+        };
+      })
+      .sort((a, b) => (b.closedAt || 0) - (a.closedAt || 0))
+      .slice(0, 50);
+  }
+
+  startLiveAccountPoll() {
+    if (this.livePollTimer) return;
+    this.livePollTimer = setInterval(() => {
+      if (!this.started) return;
+      this.liveBlofinCache = null;
+      this.liveBlofinCacheAt = 0;
+      this.fetchLiveBlofinAccount().catch(() => {});
+    }, 8000);
+    this.livePollTimer.unref?.();
+  }
+
+  stopLiveAccountPoll() {
+    if (this.livePollTimer) {
+      clearInterval(this.livePollTimer);
+      this.livePollTimer = null;
+    }
+  }
+
   // Direct BloFin REST read (bypasses the BloHunter SDK/vault/SSE chain). The
   // bridge already proves these credentials work via the Setup-tab test, so we
   // reuse the same signing to fetch authoritative account equity, available
@@ -924,19 +1055,21 @@ class BlohunterBridge {
     if (this.liveBlofinCache && now - this.liveBlofinCacheAt < LIVE_BLOFIN_CACHE_TTL_MS) {
       return this.liveBlofinCache;
     }
-    const creds = this.storage.pick('session', ['apiKey', 'secret', 'passphrase']);
-    const apiKey = String(creds.apiKey || '').trim();
-    const secret = String(creds.secret || '').trim();
-    const passphrase = String(creds.passphrase || '').trim();
+    const creds = this.getBlofinCreds();
+    const apiKey = creds.apiKey;
+    const secret = creds.secret;
+    const passphrase = creds.passphrase;
     if (!apiKey || !secret || !passphrase) {
       return null;
     }
     const baseUrl = this.demoMode ? BLOFIN_DEMO_REST_URL : BLOFIN_LIVE_REST_URL;
     const balancePath = '/api/v1/account/balance?accountType=futures';
     const positionsPath = '/api/v1/account/positions?accountType=futures';
-    const [balanceRes, positionsRes] = await Promise.all([
+    const historyPath = '/api/v1/account/positions-history?limit=50';
+    const [balanceRes, positionsRes, historyRes] = await Promise.all([
       blofinRestGet(baseUrl, balancePath, { apiKey, secret, passphrase }),
       blofinRestGet(baseUrl, positionsPath, { apiKey, secret, passphrase }),
+      blofinRestGet(baseUrl, historyPath, { apiKey, secret, passphrase }),
     ]);
     if (!balanceRes.ok) {
       this.log(`[BloHunter] direct balance read failed: ${balanceRes.msg || balanceRes.status}`);
@@ -959,6 +1092,7 @@ class BlohunterBridge {
       || 0
     );
     const rawPositions = positionsRes.ok && Array.isArray(positionsRes.data) ? positionsRes.data : [];
+    const rawClosed = historyRes.ok && Array.isArray(historyRes.data) ? historyRes.data : [];
     const usdtPositions = rawPositions.filter(isUsdtMarginedPerpetual);
     const totalUnrealized = usdtPositions.reduce(
       (sum, p) => sum + firstNumber(p.unrealizedPnl, p.pnl),
@@ -976,6 +1110,7 @@ class BlohunterBridge {
       totalMargin,
       accountRows: details,
       openPositions: rawPositions,
+      closedPositions: rawClosed,
       openCount: rawPositions.length,
       fetchedAt: now,
     };
@@ -994,6 +1129,7 @@ class BlohunterBridge {
       // the dashboard still shows live equity / positions instead of nothing.
       const live = await this.fetchLiveBlofinAccount();
       if (live) {
+        const recentClosed = this.mapLiveClosedPositions(live.closedPositions || []);
         return {
           ok: true,
           data: {
@@ -1004,7 +1140,11 @@ class BlohunterBridge {
               totalUnrealized: live.totalUnrealized,
               settledEquity: live.totalEquity - live.totalUnrealized,
             },
-            openPositions: live.openPositions,
+            openPositions: this.mapLiveOpenPositions(live.openPositions),
+            recentClosed,
+            closedTrades48h: recentClosed.filter(
+              (row) => row.closedAt && row.closedAt >= Date.now() - 48 * 60 * 60 * 1000
+            ),
             exposure: {
               openCount: live.openCount,
               totalMargin: live.totalMargin,
@@ -1039,38 +1179,44 @@ class BlohunterBridge {
     // and open positions. This takes priority over the stale cron fallback.
     const deskEquity = Number(data.balances.totalEquity);
     const deskHasPositions = Array.isArray(data.openPositions) && data.openPositions.length > 0;
-    if (!(deskEquity > 0) || !deskHasPositions) {
-      const live = await this.fetchLiveBlofinAccount();
-      if (live) {
-        if (!(deskEquity > 0) && live.totalEquity > 0) {
-          data.balances.totalEquity = live.totalEquity;
+    const deskHasClosed = Array.isArray(data.recentClosed) && data.recentClosed.length > 0;
+    const live = await this.fetchLiveBlofinAccount();
+    if (live) {
+      if (live.totalEquity > 0) {
+        data.balances.totalEquity = live.totalEquity;
+      } else if (!(deskEquity > 0)) {
+        data.balances.totalEquity = live.totalEquity;
+      }
+      if (live.totalAvailable > 0 || !(Number(data.balances.totalAvailable) > 0)) {
+        data.balances.totalAvailable = live.totalAvailable;
+      }
+      if (Number.isFinite(live.totalUnrealized)) {
+        data.balances.totalUnrealized = live.totalUnrealized;
+      }
+      data.balances.settledEquity = live.totalEquity - live.totalUnrealized;
+      if (live.openPositions.length > 0 || !deskHasPositions) {
+        data.openPositions = this.mapLiveOpenPositions(live.openPositions);
+        data.openPositionsUnavailable = false;
+        if (data.errorMessage && /open positions/i.test(String(data.errorMessage))) {
+          data.errorMessage = '';
         }
-        if (!(Number(data.balances.totalAvailable) > 0) && live.totalAvailable > 0) {
-          data.balances.totalAvailable = live.totalAvailable;
-        }
-        if (!(Number(data.balances.totalUnrealized) !== 0) && Number.isFinite(live.totalUnrealized)) {
-          data.balances.totalUnrealized = live.totalUnrealized;
-        }
-        if (!Number.isFinite(Number(data.balances.settledEquity)) || !(Number(data.balances.settledEquity) > 0)) {
-          data.balances.settledEquity = live.totalEquity - live.totalUnrealized;
-        }
-        if (!deskHasPositions && live.openPositions.length > 0) {
-          data.openPositions = live.openPositions;
-          data.openPositionsUnavailable = false;
-          if (data.errorMessage && /open positions/i.test(String(data.errorMessage))) {
-            data.errorMessage = '';
-          }
-        }
-        if (!Array.isArray(data.balances.account) || data.balances.account.length === 0) {
-          data.balances.account = live.accountRows;
-        }
-        if (data.exposure && typeof data.exposure === 'object') {
-          if (!deskHasPositions && live.openPositions.length > 0) {
-            data.exposure.openCount = live.openCount;
-            data.exposure.totalMargin = live.totalMargin;
-            data.exposure.totalUnrealized = live.totalUnrealized;
-          }
-        }
+      }
+      if (live.closedPositions?.length && !deskHasClosed) {
+        data.recentClosed = this.mapLiveClosedPositions(live.closedPositions);
+        data.closedTrades48h = data.recentClosed.filter(
+          (row) => row.closedAt && row.closedAt >= Date.now() - 48 * 60 * 60 * 1000
+        );
+      }
+      if (!Array.isArray(data.balances.account) || data.balances.account.length === 0) {
+        data.balances.account = live.accountRows;
+      }
+      if (!data.exposure || typeof data.exposure !== 'object') {
+        data.exposure = {};
+      }
+      if (live.openCount > 0 || !deskHasPositions) {
+        data.exposure.openCount = live.openCount;
+        data.exposure.totalMargin = live.totalMargin;
+        data.exposure.totalUnrealized = live.totalUnrealized;
       }
     }
 
@@ -1260,6 +1406,7 @@ class BlohunterBridge {
         await this.refreshGatewaySignal('trading-tab-resync');
       }
       runSeed();
+      this.startLiveAccountPoll();
       return { ok: true, url: this.getDashboardUrl(), already: true };
     }
     if (!this.connectRoot) {
@@ -1280,6 +1427,7 @@ class BlohunterBridge {
       // Re-seed equity from cron last_tick.json every 5 minutes
       if (this.equitySeedTimer) clearInterval(this.equitySeedTimer);
       this.equitySeedTimer = setInterval(() => runSeed(), 5 * 60 * 1000);
+      this.startLiveAccountPoll();
       return { ok: true, url: this.getDashboardUrl(), root: this.connectRoot };
     } catch (err) {
       this.log('[BloHunter] start failed:', err.message);
@@ -1300,6 +1448,7 @@ class BlohunterBridge {
       clearInterval(this.equitySeedTimer);
       this.equitySeedTimer = null;
     }
+    this.stopLiveAccountPoll();
     this.sse?.stop();
     if (this.httpServer) {
       await new Promise((resolve) => {

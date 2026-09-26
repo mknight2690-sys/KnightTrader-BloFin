@@ -132,13 +132,19 @@
           <div class="preflight">
             <div class="preflight-title">Before you start — do not skip this</div>
             <ol class="howto-list howto-list--tight">
-              <li>You need a <strong>Windows 11</strong> PC or a <strong>Mac</strong>.</li>
-              <li>You need a <strong>debit card</strong> and the ability to open your bank app or use a chip reader.</li>
-              <li>You need an <strong>email address and password</strong> you can remember.</li>
-              <li>You need about <strong>30–60 minutes</strong> of uninterrupted time.</li>
-              <li>Turn off notifications or find a quiet screen so you can read each step.</li>
+              <li>You need a <strong>Windows 11</strong> PC or a <strong>Mac</strong> with admin rights (you can click “Yes” on install prompts).</li>
+              <li>You need a <strong>debit card</strong> and the ability to open your bank app or approve a small verification charge.</li>
+              <li>You need an <strong>email address and password</strong> you can remember — you will reuse them in the app, Coinbase, Blofin, and Nous Portal.</li>
+              <li>You need about <strong>45–90 minutes</strong> of uninterrupted time for the full first-time setup.</li>
+              <li>Keep a <strong>notepad</strong> (paper or Notes app) open to copy deposit addresses, API keys, and passwords as you go.</li>
+              <li>Use <strong>Chrome or Edge</strong> for exchange websites if Safari or another browser gives you login trouble.</li>
+              <li>Turn off notifications or find a quiet screen so you can read each step without skipping.</li>
+              <li>Plug your laptop into <strong>power</strong> — do not run this setup on battery-only if you can avoid it.</li>
+              <li>Plan to buy <strong>USDT</strong> on Coinbase (Tether) — <strong>not USDC</strong> — and send USDT to Blofin (steps 12–14).</li>
+              <li>After USDT arrives on Blofin, you must <strong>transfer it to USDT-M (Futures)</strong> before Hermes can trade (step 15).</li>
+              <li>Budget roughly <strong>$25–$100+</strong> for your first Coinbase USDT buy plus small network fees — start small until the full flow works once.</li>
             </ol>
-            <div class="preflight-warn">If something fails, stop and read the exact message. Do not keep clicking randomly. Most failures are one missed field or one wrong network.</div>
+            <div class="preflight-warn">If something fails, stop and read the exact message. Do not keep clicking randomly. Most failures are one missed field, one wrong network, buying the wrong coin (USDC instead of USDT), or funds sitting in the wrong Blofin wallet (Funding/Spot instead of USDT-M).</div>
           </div>
 
           <div class="steps-flow">
@@ -150,13 +156,18 @@
                 <div class="step-desc">You need an active membership to download and use the app. Use an email you can access and a password you can remember. You will use the same email and password in the app.</div>
                 <div class="step-desc"><strong>Click by click:</strong></div>
                 <ol class="howto-list">
-                  <li>On this site, click <strong>Join membership — $47/month</strong>.</li>
-                  <li>Enter your <strong>email</strong> and <strong>password</strong>.</li>
-                  <li>Complete Stripe checkout.</li>
-                  <li>Write your email and password down in a safe place on your computer or phone.</li>
-                  <li>Come back to this site, scroll to <strong>Login to download</strong>, enter the same email and password, then download.</li>
+                  <li>On the KnightTrader membership site, click <strong>Join membership — $47/month</strong>.</li>
+                  <li>Enter the <strong>email</strong> you want to use for everything (app login + receipts).</li>
+                  <li>Create a <strong>password</strong> you can retype — write it in your notepad now.</li>
+                  <li>Complete <strong>Stripe</strong> checkout with your card.</li>
+                  <li>Wait for the confirmation page or email from Stripe — do not close the tab until you see success.</li>
+                  <li>Write your email and password down in a safe place (password manager, Notes app, or paper).</li>
+                  <li>Come back to the membership site, scroll to <strong>Login to download</strong>.</li>
+                  <li>Enter the <strong>same email and password</strong> you just used for checkout.</li>
+                  <li>Click download for <strong>Windows</strong> or <strong>Mac</strong> matching your computer.</li>
+                  <li>Save the installer file somewhere you can find it (Downloads folder is fine).</li>
                 </ol>
-                <div class="step-desc">Do not forget this password. You will need it every time you reinstall or sign into the app.</div>
+                <div class="step-desc">Do not forget this password. You will need it every time you reinstall, sign into the app, or download updates from the member area.</div>
               </div>
             </div>
 
@@ -167,16 +178,22 @@
                 <div class="step-desc">Install like any normal program. There is nothing technical here.</div>
                 <div class="step-desc"><strong>Windows:</strong></div>
                 <ol class="howto-list">
-                  <li>Open the downloaded installer.</li>
-                  <li>Follow the prompts.</li>
-                  <li>When it finishes, find <strong>KnightTrader BloFin</strong> in your Start menu and open it.</li>
+                  <li>Open your <strong>Downloads</strong> folder and double-click the <strong>KnightTrader BloFin Setup</strong> installer.</li>
+                  <li>If SmartScreen asks “Windows protected your PC”, click <strong>More info</strong> → <strong>Run anyway</strong> (the app is signed; this is normal for new publishers).</li>
+                  <li>Click <strong>Next</strong> through the installer — default location is fine.</li>
+                  <li>Wait until the progress bar completes (do not cancel mid-install).</li>
+                  <li>Leave “Launch KnightTrader BloFin” checked if offered, or open from Start menu manually.</li>
+                  <li>Press the <strong>Windows key</strong>, type <strong>KnightTrader</strong>, click <strong>KnightTrader BloFin</strong>.</li>
+                  <li>Pin it to taskbar if you want quick access later (right-click icon → Pin to taskbar).</li>
                 </ol>
                 <div class="step-desc"><strong>Mac:</strong></div>
                 <ol class="howto-list">
-                  <li>Open the downloaded <code>.dmg</code>.</li>
-                  <li>Drag <strong>KnightTrader BloFin</strong> into your <strong>Applications</strong> folder.</li>
-                  <li>Open it from <strong>Applications</strong>.</li>
-                  <li>If macOS warns you, open <strong>System Settings → Privacy & Security</strong> and allow it.</li>
+                  <li>Open the downloaded <code>.dmg</code> from Downloads.</li>
+                  <li>Drag <strong>KnightTrader BloFin</strong> into your <strong>Applications</strong> folder when the window shows the arrow.</li>
+                  <li>Eject the disk image (right-click → Eject).</li>
+                  <li>Open <strong>Applications</strong> → double-click <strong>KnightTrader BloFin</strong>.</li>
+                  <li>If macOS says the app is from an unidentified developer, open <strong>System Settings → Privacy &amp; Security</strong> → click <strong>Open Anyway</strong> for KnightTrader.</li>
+                  <li>Grant any permissions macOS asks for (network, etc.) — the app needs local network for Hermes.</li>
                 </ol>
                 <div class="step-desc">If the app opens, you are good. If it closes immediately, read the error text and fix the first item it mentions.</div>
                 <div class="step-desc"><strong>What success looks like:</strong></div>
@@ -194,13 +211,15 @@
                 <div class="step-title">Sign in to the app</div>
                 <div class="step-desc">Use the same email and password you used on the website.</div>
                 <ol class="howto-list">
-                  <li>Type your <strong>email</strong>.</li>
-                  <li>Type your <strong>password</strong>.</li>
-                  <li>Click <strong>Sign in</strong>.</li>
-                  <li>If you see an error, check caps lock and retype both fields.</li>
-                  <li>If it says membership is not active, renew in the app <strong>Settings</strong> tab.</li>
+                  <li>When the app opens, you should land on the <strong>How-To</strong> tab — that is normal for first launch.</li>
+                  <li>If you see a sign-in screen, click into the <strong>email</strong> field and type your membership email exactly.</li>
+                  <li>Click the <strong>password</strong> field and type your membership password — use Show password if you need to verify typing.</li>
+                  <li>Click <strong>Sign in</strong> once and wait a few seconds.</li>
+                  <li>If you see an error, check <strong>Caps Lock</strong> and retype both fields carefully.</li>
+                  <li>If it says membership is not active, open the membership site and confirm Stripe subscription status, or renew in the app <strong>Settings</strong> tab if available.</li>
+                  <li>After successful sign-in, explore the left tabs: <strong>How-To</strong>, <strong>Setup</strong>, <strong>Hermes</strong>, <strong>Trading</strong>, <strong>Logs</strong>.</li>
                 </ol>
-                <div class="step-desc">Do not guess passwords. If you forget it, click <strong>Forgot password?</strong>.</div>
+                <div class="step-desc">Do not guess passwords. If you forget it, use <strong>Forgot password?</strong> on the membership login page, not inside the app alone.</div>
               </div>
             </div>
 
@@ -211,14 +230,16 @@
                 <div class="step-desc">If the computer sleeps, Hermes stops. Change these settings now so they do not surprise you later.</div>
                 <div class="step-desc"><strong>Windows 11 — exact clicks:</strong></div>
                 <ol class="howto-list">
+                  <li>Plug your laptop into the wall charger before changing settings.</li>
                   <li>Press the <strong>Windows key</strong>, type <strong>Settings</strong>, and open it.</li>
-                  <li>Click <strong>System</strong>.</li>
-                  <li>Click <strong>Power & battery</strong>.</li>
-                  <li>Click <strong>Screen and sleep</strong>.</li>
+                  <li>Click <strong>System</strong> in the left sidebar.</li>
+                  <li>Click <strong>Power &amp; battery</strong>.</li>
+                  <li>Click <strong>Screen and sleep</strong> (or expand the Screen and sleep section).</li>
                   <li>Set <strong>When plugged in, turn off my screen after</strong> to <strong>Never</strong>.</li>
                   <li>Set <strong>When plugged in, put my device to sleep after</strong> to <strong>Never</strong>.</li>
-                  <li>If you see battery options, set them to <strong>Never</strong> or a long timeout.</li>
-                  <li>Close Settings.</li>
+                  <li>If you see separate <strong>On battery</strong> rows, set those to <strong>Never</strong> or the longest timeout available.</li>
+                  <li>Go back one screen and confirm <strong>Power mode</strong> is <strong>Best performance</strong> if that option exists (optional but helps avoid throttling).</li>
+                  <li>Close Settings and leave the PC plugged in whenever Hermes is running overnight.</li>
                 </ol>
                 <div class="step-desc"><strong>Mac — exact clicks:</strong></div>
                 <ol class="howto-list">
@@ -239,24 +260,29 @@
               <div class="step-body">
                 <div class="step-title">Install ProtonVPN and reach an allowed country</div>
                 <div class="step-desc">Use this only if Blofin is blocked in your country. Do not skip the wait times.</div>
+                <div class="step-desc"><strong>When you need this step:</strong> If <strong>blofin.com</strong> loads normally without a geo-block message, you can skip VPN entirely. If Blofin says your region is restricted, follow every sub-step below.</div>
                 <div class="step-desc"><strong>Exact routine:</strong></div>
                 <ol class="howto-list">
-                  <li>Go to <strong>protonvpn.com</strong>.</li>
-                  <li>Click <strong>Get Proton VPN</strong> or <strong>Download</strong>.</li>
-                  <li>Install the app.</li>
-                  <li>Create a free Proton account.</li>
-                  <li>Open ProtonVPN and click <strong>Connect</strong>.</li>
-                  <li>If it connects to the <strong>United States</strong>, leave it connected for now.</li>
-                  <li>Open the ProtonVPN app home screen.</li>
-                  <li>Click <strong>Change server</strong>.</li>
-                  <li>If the new country is <strong>not</strong> Romania, Poland, Netherlands, or Mexico, wait <strong>1 minute 40 seconds</strong>.</li>
+                  <li>Go to <strong>protonvpn.com</strong> in Chrome or Edge.</li>
+                  <li>Click <strong>Get Proton VPN</strong> or <strong>Download</strong> for Windows or Mac.</li>
+                  <li>Run the installer and finish setup (default options are fine).</li>
+                  <li>Create a free Proton account with an email you can access.</li>
+                  <li>Verify your email if Proton sends a link.</li>
+                  <li>Open the ProtonVPN app and sign in.</li>
+                  <li>Click <strong>Quick Connect</strong> or <strong>Connect</strong> once to confirm VPN works.</li>
+                  <li>Note which country flag appears — if it is the <strong>United States</strong>, you must change server (US is not allowed for Blofin in this guide).</li>
+                  <li>Open the ProtonVPN home screen and click <strong>Change server</strong> or pick a country from the list.</li>
+                  <li>Try to land in <strong>Romania</strong>, <strong>Poland</strong>, <strong>Netherlands</strong>, or <strong>Mexico</strong>.</li>
+                  <li>If the new country is <strong>not</strong> one of those four, wait <strong>1 minute 40 seconds</strong> on a timer — do not click again early.</li>
                   <li>Click <strong>Change server</strong> again.</li>
                   <li>If it is still not allowed, wait <strong>1 minute 50 seconds</strong>.</li>
                   <li>Click <strong>Change server</strong> a third time.</li>
-                  <li>If you are still not in an allowed country, click <strong>Disconnect</strong>, wait a moment, then click <strong>Connect</strong>.</li>
-                  <li>If it connects to the <strong>United States</strong> again, wait up to <strong>10 minutes</strong>, then start again from step 7.</li>
+                  <li>If you are still not in an allowed country, click <strong>Disconnect</strong>, wait 10 seconds, then click <strong>Connect</strong>.</li>
+                  <li>If it connects to the <strong>United States</strong> again, wait up to <strong>10 minutes</strong>, then repeat from the Change server step.</li>
+                  <li>Once connected to an allowed country, open <strong>blofin.com</strong> in the same browser and confirm the site loads and lets you sign up.</li>
+                  <li>Leave ProtonVPN connected whenever you use Blofin in the browser until you finish steps 7–15.</li>
                 </ol>
-                <div class="step-desc">Allowed countries: <strong>Romania, Poland, Netherlands, Mexico</strong>. Not allowed: <strong>Singapore, United States, Canada</strong>.</div>
+                <div class="step-desc">Allowed countries: <strong>Romania, Poland, Netherlands, Mexico</strong>. Not allowed: <strong>Singapore, United States, Canada</strong>. If Blofin works without VPN, do not use VPN — extra hops can cause login issues.</div>
               </div>
             </div>
 
@@ -325,13 +351,16 @@
                 <div class="step-desc">This is the exchange where Hermes trades. Create the account first, before you buy crypto.</div>
                 <div class="step-desc"><strong>Click by click:</strong></div>
                 <ol class="howto-list">
-                  <li>Open <strong>blofin.com</strong>.</li>
+                  <li>Open <strong>blofin.com</strong> in Chrome or Edge (use VPN step 5 first if Blofin is blocked in your country).</li>
                   <li>Click <strong>Sign up</strong> or <strong>Get started</strong>.</li>
-                  <li>Enter your email and create a password.</li>
-                  <li>Verify your email if prompted.</li>
-                  <li>Enable security features such as two-factor authentication if prompted.</li>
+                  <li>Enter your email and create a strong password — save it in your notepad.</li>
+                  <li>Complete Blofin’s email verification link if sent to your inbox.</li>
+                  <li>Complete identity verification (KYC) if Blofin prompts — upload ID photos as requested.</li>
+                  <li>Enable <strong>two-factor authentication (2FA)</strong> when offered (Google Authenticator or SMS).</li>
+                  <li>Save your 2FA backup codes if Blofin provides them.</li>
+                  <li>Log out and log back in once to confirm your password works before creating API keys.</li>
                 </ol>
-                <div class="step-desc">Keep this tab open. You will need Blofin open again when you create API keys and deposit funds.</div>
+                <div class="step-desc">Keep Blofin bookmarked. You will return for API keys (step 8), USDT deposit (steps 13–14), and USDT-M transfer (step 15).</div>
               </div>
             </div>
 
@@ -342,25 +371,29 @@
                 <div class="step-desc">The app needs three values: API Key, Secret Key, and Passphrase. The file loader can also read them from a text file.</div>
                 <div class="step-desc"><strong>Click by click:</strong></div>
                 <ol class="howto-list">
-                  <li>In Blofin, open your account menu and go to <strong>API Management</strong> or <strong>API</strong>.</li>
+                  <li>Sign in to <strong>blofin.com</strong> (with VPN on if you needed step 5).</li>
+                  <li>Click your profile icon or avatar (top right).</li>
+                  <li>Open <strong>API Management</strong>, <strong>API</strong>, or <strong>API Keys</strong> from the menu.</li>
                   <li>Click <strong>Create API key</strong> or <strong>New API key</strong>.</li>
-                  <li>Name the key something simple like <strong>KT Hermes</strong>.</li>
-                  <li>Enable <strong>Compendium</strong> permission.</li>
-                  <li>Enable <strong>Trading</strong> permission.</li>
-                  <li>Enable <strong>Transfer</strong> permission only if you plan to move funds inside Blofin.</li>
-                  <li>Save the key.</li>
-                  <li>Copy the <strong>API Key</strong>.</li>
-                  <li>Copy the <strong>Secret Key</strong>.</li>
-                  <li>Copy the <strong>Passphrase</strong>.</li>
-                  <li>Open the KnightTrader BloFin <strong>Setup</strong> tab.</li>
-                  <li>Paste the API Key into <strong>API Key</strong>.</li>
-                  <li>Paste the Secret Key into <strong>Secret Key</strong>.</li>
-                  <li>Paste the Passphrase into <strong>Passphrase</strong>.</li>
-                  <li>If you saved the keys into a text file instead, click <strong>Load from file…</strong> and choose that file.</li>
-                  <li>Click <strong>Test Blofin Credentials</strong>.</li>
-                  <li>Wait for a success message before continuing.</li>
+                  <li>Name the key something simple like <strong>KT Hermes</strong> so you remember what it is for.</li>
+                  <li>Set permissions: enable <strong>Read</strong> if shown separately.</li>
+                  <li>Enable <strong>Compendium</strong> permission (required for Hermes context).</li>
+                  <li>Enable <strong>Trade</strong> or <strong>Trading</strong> permission (required for live orders).</li>
+                  <li>Enable <strong>Transfer</strong> only if you plan to move funds between Blofin wallets via API — optional for manual USDT-M transfer in step 15.</li>
+                  <li>If Blofin asks for IP whitelist, leave blank or add your home IP only if you know it — blank usually works for residential users.</li>
+                  <li>Create a strong <strong>Passphrase</strong> when prompted — write it on your notepad immediately.</li>
+                  <li>Click <strong>Confirm</strong> / <strong>Create</strong> and complete any 2FA Blofin requires.</li>
+                  <li>Blofin shows the <strong>API Key</strong> and <strong>Secret Key</strong> once — copy both before closing the dialog.</li>
+                  <li>Paste all three values into your notepad temporarily so you do not lose them.</li>
+                  <li>Open KnightTrader BloFin → <strong>Setup</strong> tab → <strong>Blofin Credentials</strong> section.</li>
+                  <li>Paste into <strong>API Key</strong>, <strong>Secret Key</strong>, and <strong>Passphrase</strong> fields (no extra spaces).</li>
+                  <li>Alternatively, save the three lines in a text file and click <strong>Load from file…</strong> to import.</li>
+                  <li>Confirm <strong>LIVE</strong> mode is selected (not demo) unless you intentionally use demo trading.</li>
+                  <li>Click <strong>Test Blofin Credentials</strong> once and wait — do not double-click.</li>
+                  <li>Read the result: green success means keys work; red error tells you which field failed.</li>
+                  <li>Do not delete the API key on Blofin until Hermes is working — you would need to recreate and re-paste.</li>
                 </ol>
-                <div class="step-desc">If test fails: double-check the three values, then click test again. Do not move on until it succeeds.</div>
+                <div class="step-desc">If test fails: re-copy all three values from Blofin (Secret is shown only once at creation — if you lost it, delete the key on Blofin and create a new one). Confirm Compendium + Trade permissions. Do not move on until test succeeds.</div>
               </div>
             </div>
 
@@ -370,9 +403,12 @@
                 <div class="step-title">Save credentials and write the compendium file</div>
                 <div class="step-desc">Saving writes the encrypted credentials locally. Writing the compendium creates the file Hermes reads.</div>
                 <ol class="howto-list">
-                  <li>In the app <strong>Setup</strong> tab, click <strong>Save & Write Compendium</strong>.</li>
-                  <li>Wait for the success message.</li>
-                  <li>If you see an error, read it, fix it, then save again.</li>
+                  <li>Open the app <strong>Setup</strong> tab.</li>
+                  <li>Confirm both credential tests passed (Nous + Blofin) from step 8.</li>
+                  <li>Click <strong>Save &amp; Write Compendium</strong> once.</li>
+                  <li>Watch the <strong>Logs</strong> tab for a green success line about compendium written.</li>
+                  <li>If you see an error, read the exact text — usually a missing field — fix Setup, then save again.</li>
+                  <li>Do not share the compendium file; it contains your API secrets in plain text for Hermes to read locally.</li>
                 </ol>
               </div>
             </div>
@@ -381,20 +417,24 @@
               <div class="step-num">10</div>
               <div class="step-body">
                 <div class="step-title">Create a Coinbase account</div>
-                <div class="step-desc">You will use Coinbase to turn debit-card money into crypto.</div>
+                <div class="step-desc">You will use Coinbase to turn debit-card money into <strong>USDT</strong>, then send USDT to Blofin for USDT-M futures trading.</div>
                 <div class="step-desc"><strong>Click by click:</strong></div>
                 <ol class="howto-list">
-                  <li>Open <strong>coinbase.com</strong> in a browser.</li>
-                  <li>Click <strong>Get started</strong>.</li>
-                  <li>Enter your <strong>email</strong>.</li>
-                  <li>Create a <strong>password</strong> you can remember.</li>
-                  <li>Click the verification link Coinbase sends to your email.</li>
-                  <li>Add your <strong>phone number</strong>.</li>
-                  <li>Enable <strong>two-factor authentication</strong>.</li>
-                  <li>Verify your identity with a government-issued ID.</li>
-                  <li>Wait for approval if Coinbase asks for manual review.</li>
+                  <li>Open <strong>coinbase.com</strong> in Chrome or Edge (same browser you will use to send USDT later).</li>
+                  <li>Click <strong>Get started</strong> or <strong>Sign up</strong>.</li>
+                  <li>Enter your <strong>email</strong> — you can reuse your membership email or a separate one; just remember which you used.</li>
+                  <li>Create a <strong>password</strong> and write it in your notepad.</li>
+                  <li>Accept terms if prompted and submit the signup form.</li>
+                  <li>Open your email inbox and click Coinbase’s <strong>Verify email</strong> link.</li>
+                  <li>Return to Coinbase and add your <strong>phone number</strong> when asked.</li>
+                  <li>Enter the SMS code Coinbase sends to verify the phone.</li>
+                  <li>Enable <strong>two-factor authentication (2FA)</strong> — authenticator app is more secure than SMS if Coinbase offers both.</li>
+                  <li>Start <strong>identity verification</strong>: choose country, upload photos of your ID (driver license or passport), and take the selfie if requested.</li>
+                  <li>Wait on the verification screen — some accounts approve in minutes, others take hours.</li>
+                  <li>Do not try to buy USDT (step 12) until Coinbase shows verification complete or your account tier allows crypto purchases.</li>
+                  <li>Sign out and sign back in once to confirm your password works.</li>
                 </ol>
-                <div class="step-desc">Save your Coinbase email and password too.</div>
+                <div class="step-desc">Save your Coinbase email and password in the same notepad as your membership login. You will need 2FA every time you send USDT to Blofin.</div>
               </div>
             </div>
 
@@ -404,135 +444,193 @@
                 <div class="step-title">Add your debit card to Coinbase</div>
                 <div class="step-desc">This is how you buy crypto with money from your bank.</div>
                 <ol class="howto-list">
-                  <li>Open Coinbase and sign in.</li>
-                  <li>Click your <strong>profile picture</strong> or <strong>Settings</strong>.</li>
-                  <li>Click <strong>Payment methods</strong>.</li>
-                  <li>Click <strong>Add a payment method</strong>.</li>
-                  <li>Choose <strong>Debit card</strong>.</li>
-                  <li>Enter the card number, expiration date, and CVV.</li>
-                  <li>Enter the billing address exactly as your bank has it.</li>
-                  <li>Confirm the card.</li>
-                  <li>If Coinbase shows a small authorization hold, approve it in your bank app if needed.</li>
+                  <li>Open <strong>coinbase.com</strong> or the Coinbase mobile app and sign in.</li>
+                  <li>Click your <strong>profile picture</strong> (top right on web) or the menu icon on mobile.</li>
+                  <li>Click <strong>Settings</strong> or <strong>Payment methods</strong> (wording varies).</li>
+                  <li>Click <strong>Add a payment method</strong> or <strong>Link a debit card</strong>.</li>
+                  <li>Choose <strong>Debit card</strong> (not credit card if Coinbase warns credit may not work for crypto buys).</li>
+                  <li>Enter the card number, expiration date, and CVV exactly as printed on the card.</li>
+                  <li>Enter the billing address exactly as your bank has it — mismatches cause declines.</li>
+                  <li>Click <strong>Save</strong> or <strong>Add card</strong>.</li>
+                  <li>If Coinbase shows a small temporary authorization hold ($1–2), approve it in your bank app if your bank asks.</li>
+                  <li>Wait until the card shows as <strong>Verified</strong> or ready for purchases.</li>
                 </ol>
-                <div class="step-desc">If the card is declined, call your bank and allow online or card-not-present purchases.</div>
+                <div class="step-desc">If the card is declined, call your bank and allow online / international / crypto-related purchases. Some banks block first Coinbase transactions until you approve.</div>
               </div>
             </div>
 
             <div class="step-card">
               <div class="step-num">12</div>
               <div class="step-body">
-                <div class="step-title">Buy crypto with your debit card</div>
-                <div class="step-desc">Buy a small amount first. Card fees are higher than bank transfers.</div>
+                <div class="step-title">Buy USDT with your debit card on Coinbase</div>
+                <div class="step-desc">Buy a small amount first. Card fees are higher than bank transfers. Hermes trades on Blofin <strong>USDT-M</strong> (USDT-margined perpetual futures), so you want <strong>USDT</strong> — not USDC, not BTC, not ETH — for the deposit path in this guide.</div>
                 <ol class="howto-list">
-                  <li>In Coinbase, click <strong>Trade</strong> or go to <strong>Buy</strong>.</li>
-                  <li>Choose <strong>USDC</strong> for your first buy. It is designed to stay near one dollar.</li>
-                  <li>Enter a small amount.</li>
-                  <li>Click <strong>Preview buy</strong>.</li>
-                  <li>Review the fee.</li>
-                  <li>Confirm the purchase.</li>
-                  <li>Wait until it says <strong>Completed</strong>.</li>
+                  <li>Sign in to Coinbase (web or app) and confirm identity verification is complete.</li>
+                  <li>Click <strong>Trade</strong>, <strong>Buy</strong>, or the <strong>Buy &amp; sell</strong> button on the home screen.</li>
+                  <li>In the asset search box, type <strong>USDT</strong> — do <strong>not</strong> select USDC, USD, BTC, or ETH for this guide.</li>
+                  <li>Select <strong>Tether (USDT)</strong> from the results.</li>
+                  <li>If Coinbase shows multiple USDT products, choose the standard <strong>USDT</strong> spot asset (not a wrapped or earn-only product).</li>
+                  <li>Enter a small amount to start (for example <strong>$25–$50</strong>) so you can learn the send/transfer flow before moving larger sums.</li>
+                  <li>Select your verified <strong>debit card</strong> as the payment method (not bank transfer for your first test — bank transfers are slower).</li>
+                  <li>Click <strong>Preview buy</strong> or <strong>Review order</strong>.</li>
+                  <li>Review the <strong>Coinbase fee</strong>, <strong>spread</strong>, and the <strong>total</strong> charged to your card.</li>
+                  <li>Confirm the asset line still says <strong>USDT</strong> before you pay.</li>
+                  <li>Complete any 2FA or card verification Coinbase asks for.</li>
+                  <li>Confirm the purchase and wait for processing.</li>
+                  <li>Wait until Coinbase shows the buy as <strong>Completed</strong> or the USDT balance appears in <strong>Portfolio</strong> / <strong>Assets</strong>.</li>
+                  <li>Click into your <strong>USDT</strong> balance and confirm the amount matches what you bought (minus fees).</li>
+                  <li>Leave USDT on Coinbase for now — you will send it to Blofin in step 14 after copying the deposit address in step 13.</li>
                 </ol>
-                <div class="step-desc">If it fails, read the exact error. Usually it is the bank declining the card or card limits.</div>
+                <div class="step-desc">If it fails, read the exact error. Usually it is the bank declining the card, daily card limits, or Coinbase identity verification still pending. If USDT is unavailable in your region on Coinbase, finish Coinbase verification first or use another on-ramp your region supports — but still send <strong>USDT</strong> to Blofin, not USDC.</div>
               </div>
             </div>
 
             <div class="step-card">
               <div class="step-num">13</div>
               <div class="step-body">
-                <div class="step-title">Get your Blofin deposit address</div>
-                <div class="step-desc">You will send crypto from Coinbase to this address. Do not skip this section.</div>
+                <div class="step-title">Get your Blofin USDT deposit address</div>
+                <div class="step-desc">You will send <strong>USDT</strong> from Coinbase to this address. Deposits usually land in Blofin <strong>Funding</strong> or <strong>Spot</strong> first — you will move them to <strong>USDT-M</strong> in the next step. Do not skip this section.</div>
                 <div class="step-desc"><strong>Exact Blofin steps:</strong></div>
                 <ol class="howto-list">
                   <li>Open <strong>blofin.com</strong> and sign in.</li>
-                  <li>Open <strong>Assets</strong> or <strong>Wallet</strong>.</li>
+                  <li>Click <strong>Assets</strong> or open the <strong>Wallet</strong> menu (wording may vary slightly on mobile vs desktop).</li>
                   <li>Click <strong>Deposit</strong>.</li>
-                  <li>Choose <strong>USDC</strong> if you bought USDC, or choose the exact coin you bought.</li>
-                  <li>Choose the <strong>network</strong> Coinbase will send on.</li>
-                  <li>Copy the <strong>deposit address</strong>.</li>
-                  <li>If Blofin asks for a <strong>memo</strong> or <strong>tag</strong>, copy that too.</li>
+                  <li>Search for and select <strong>USDT</strong> (Tether).</li>
+                  <li>Blofin will show one or more <strong>networks</strong> (for example <strong>TRC20</strong>, <strong>ERC20</strong>, <strong>Arbitrum</strong>, etc.).</li>
+                  <li>Pick a network that Coinbase also supports for USDT withdrawals — <strong>TRC20</strong> is often cheapest on fees, but you must match the network on both sides exactly.</li>
+                  <li>Copy the <strong>deposit address</strong> Blofin shows for that network.</li>
+                  <li>If Blofin asks for a <strong>memo</strong>, <strong>tag</strong>, or <strong>destination tag</strong>, copy that too — some networks require it.</li>
+                  <li>Leave this Blofin deposit page open while you send from Coinbase so you can double-check address and network.</li>
                 </ol>
-                <div class="step-desc">Write down: coin, network, address, and memo if required.</div>
+                <div class="step-desc">Write down on your notepad: <strong>USDT</strong>, the exact <strong>network name</strong>, the full <strong>address</strong>, and <strong>memo/tag</strong> if shown. Wrong network = lost funds.</div>
               </div>
             </div>
 
             <div class="step-card">
               <div class="step-num">14</div>
               <div class="step-body">
-                <div class="step-title">Send crypto from Coinbase to Blofin</div>
-                <div class="step-desc">This is the most common place people lose funds. Do not rush. Match every field exactly.</div>
+                <div class="step-title">Send USDT from Coinbase to Blofin</div>
+                <div class="step-desc">This is the most common place people lose funds. Do not rush. Match every field exactly — especially <strong>USDT</strong> and the <strong>network</strong>.</div>
                 <div class="step-desc"><strong>Exact Coinbase steps:</strong></div>
                 <ol class="howto-list">
                   <li>In Coinbase, open <strong>Portfolio</strong> or <strong>Assets</strong>.</li>
-                  <li>Find the coin you bought.</li>
-                  <li>Click <strong>Send</strong>.</li>
-                  <li>Paste the <strong>Blofin deposit address</strong>.</li>
-                  <li>If Coinbase asks for <strong>destination tag</strong> or <strong>memo</strong>, paste the Blofin memo here.</li>
-                  <li>Choose the <strong>network</strong> that matches Blofin exactly.</li>
-                  <li>Review the network fee.</li>
-                  <li>Click <strong>Continue</strong> or <strong>Preview</strong>.</li>
+                  <li>Find <strong>USDT</strong> (Tether) in your balances.</li>
+                  <li>Click <strong>Send</strong> on USDT.</li>
+                  <li>If Coinbase asks whether you are sending to yourself or an exchange, choose the option that matches sending to an exchange / external wallet.</li>
+                  <li>Paste the <strong>Blofin USDT deposit address</strong> you copied in step 13.</li>
+                  <li>If Coinbase asks for <strong>destination tag</strong> or <strong>memo</strong>, paste the Blofin memo/tag here — leave blank only if Blofin did not give you one.</li>
+                  <li>Choose the <strong>network</strong> that matches Blofin exactly (same name — e.g. both say TRC20, or both say ERC20).</li>
+                  <li>Enter the amount of USDT to send (you can send all or leave a tiny dust amount on Coinbase).</li>
+                  <li>Review the <strong>network fee</strong> Coinbase shows.</li>
+                  <li>Click <strong>Continue</strong> or <strong>Preview send</strong>.</li>
+                  <li>Read the final screen: confirm coin = <strong>USDT</strong>, network matches, address matches first and last characters.</li>
+                  <li>Complete any <strong>2FA</strong> or email confirmation Coinbase requires.</li>
                   <li>Confirm the send.</li>
-                  <li>Wait for the transaction to confirm.</li>
+                  <li>Wait for Coinbase to show the transfer as <strong>Pending</strong> or <strong>Completed</strong>.</li>
+                  <li>Note the <strong>transaction ID (TXID)</strong> if Coinbase shows one — useful if support needs it.</li>
                 </ol>
-                <div class="step-desc">If you send the wrong coin or wrong network, the funds may be lost. Double-check both before confirming.</div>
-                <div class="step-desc">After sending, open Blofin <strong>Assets</strong> and refresh until the deposit appears.</div>
+                <div class="step-desc">If you send the wrong coin or wrong network, the funds may be lost. Double-check USDT + network + address before confirming.</div>
+                <div class="step-desc"><strong>After sending — wait for Blofin to credit you:</strong></div>
+                <ol class="howto-list">
+                  <li>Open Blofin <strong>Assets</strong> → <strong>Deposit history</strong> or your USDT balance view.</li>
+                  <li>Refresh the page every few minutes. TRC20 often arrives in minutes; ERC20 can take longer depending on congestion.</li>
+                  <li>Wait until the deposit status shows <strong>Successful</strong>, <strong>Completed</strong>, or the USDT balance increases.</li>
+                  <li>Check whether the balance landed under <strong>Funding</strong>, <strong>Spot</strong>, or another wallet tab — note which one shows the USDT.</li>
+                </ol>
+                <div class="step-desc">Do not continue to Hermes trading until you see the USDT on Blofin and complete step 15 (move to USDT-M).</div>
               </div>
             </div>
 
             <div class="step-card">
               <div class="step-num">15</div>
               <div class="step-body">
-                <div class="step-title">Add Defender exclusion on Windows before install</div>
-                <div class="step-desc">If you are on Windows, do this first. If you are on Mac, skip this step.</div>
+                <div class="step-title">Move your USDT into USDT-M (Futures) on Blofin</div>
+                <div class="step-desc">Hermes trades on Blofin’s <strong>USDT-margined perpetual futures (USDT-M)</strong> account. Coinbase deposits usually arrive in <strong>Funding</strong> or <strong>Spot</strong> first. Until you transfer USDT into <strong>USDT-M</strong>, the app may show zero equity and Hermes cannot open positions.</div>
+                <div class="step-desc"><strong>Why this step matters:</strong> Funding/Spot USDT is not the same wallet as USDT-M futures margin. You must internal-transfer on Blofin before trading.</div>
+                <div class="step-desc"><strong>Method A — Transfer (works from Funding or Spot):</strong></div>
                 <ol class="howto-list">
-                  <li>In the app, go to the <strong>Hermes</strong> tab.</li>
-                  <li>Find <strong>Step 0: Whitelist in Windows Defender</strong>.</li>
-                  <li>Click <strong>Add Defender Exclusion</strong>.</li>
-                  <li>If a UAC window pops up, click <strong>Yes</strong>.</li>
-                  <li>If auto-add fails, open <strong>Windows Security</strong> → <strong>Virus &amp; threat protection</strong> → <strong>Manage settings</strong> → <strong>Exclusions</strong> → <strong>Add folder</strong>.</li>
-                  <li>Add the folder shown in the app.</li>
+                  <li>On <strong>blofin.com</strong>, sign in and open <strong>Assets</strong> (or <strong>Wallet</strong>).</li>
+                  <li>Click <strong>Transfer</strong> (sometimes labeled <strong>Internal transfer</strong> or an arrow icon between accounts).</li>
+                  <li>For <strong>From</strong>, select the account where your deposit landed — usually <strong>Funding</strong> or <strong>Spot</strong>. If you are unsure, open each tab and see which one shows your USDT balance.</li>
+                  <li>For <strong>To</strong>, select <strong>Futures</strong>, <strong>USDT-M</strong>, <strong>Derivatives</strong>, or <strong>Perpetual</strong> — Blofin’s label for the futures wallet. Pick the USDT-margined futures destination, not coin-margined (CM) unless you know you need CM.</li>
+                  <li>Select coin: <strong>USDT</strong>.</li>
+                  <li>Enter the amount to transfer (for your first time, you can transfer <strong>100%</strong> or all available USDT).</li>
+                  <li>Click <strong>Confirm</strong> / <strong>Transfer</strong>.</li>
+                  <li>Complete any 2FA or email code Blofin asks for.</li>
+                  <li>Wait until Blofin shows the transfer as successful.</li>
                 </ol>
-                <div class="step-desc">If you skip this, Hermes install may fail.</div>
+                <div class="step-desc"><strong>Method B — From the Futures / Trading screen:</strong></div>
+                <ol class="howto-list">
+                  <li>Open Blofin <strong>Futures</strong> or <strong>Trade</strong> → pick any <strong>USDT-M</strong> perpetual pair (e.g. BTC-USDT perpetual).</li>
+                  <li>If you see <strong>Transfer</strong>, <strong>Deposit to Futures</strong>, or a banner saying insufficient futures balance, click it.</li>
+                  <li>Choose <strong>From Funding</strong> or <strong>From Spot</strong> → <strong>To Futures / USDT-M</strong>.</li>
+                  <li>Select <strong>USDT</strong>, enter amount, confirm.</li>
+                </ol>
+                <div class="step-desc"><strong>Verify USDT-M balance (required before Hermes trades):</strong></div>
+                <ol class="howto-list">
+                  <li>Go to <strong>Assets</strong> → <strong>Futures</strong> or <strong>USDT-M</strong> section (wording varies).</li>
+                  <li>Confirm <strong>USDT</strong> equity / available balance matches what you transferred.</li>
+                  <li>In the KnightTrader app <strong>Setup</strong> tab, click <strong>Test Blofin Credentials</strong> again — you should still see success.</li>
+                  <li>Later, on the <strong>Trading</strong> tab, account equity should reflect this USDT-M balance (not zero).</li>
+                </ol>
+                <div class="step-desc">If transfer fails: make sure you selected USDT (not another coin), enough amount, and the correct From/To accounts. If USDT only appears under Spot, use Spot → Futures. If only under Funding, use Funding → Futures.</div>
               </div>
             </div>
 
             <div class="step-card">
               <div class="step-num">16</div>
               <div class="step-body">
-                <div class="step-title">Install Hermes</div>
-                <div class="step-desc">This installs Hermes inside this app only.</div>
+                <div class="step-title">Add Defender exclusion on Windows before Hermes install</div>
+                <div class="step-desc">If you are on Windows, do this before installing Hermes. If you are on Mac, skip this step entirely.</div>
                 <ol class="howto-list">
-                  <li>In the app <strong>Hermes</strong> tab, click <strong>Install Hermes</strong>.</li>
-                  <li>Wait for it to finish.</li>
-                  <li>If it says checking or installing, wait. Do not close the app.</li>
-                  <li>When it says installed, move to the next step.</li>
+                  <li>In KnightTrader BloFin, click the <strong>Hermes</strong> tab in the left sidebar.</li>
+                  <li>Scroll to <strong>Step 0: Whitelist in Windows Defender</strong>.</li>
+                  <li>Read the folder path shown — that is where Hermes will install.</li>
+                  <li>Click <strong>Add Defender Exclusion</strong>.</li>
+                  <li>If Windows shows a UAC prompt (“Do you want to allow this app to make changes?”), click <strong>Yes</strong>.</li>
+                  <li>Wait for the app log or status to confirm the exclusion was added.</li>
+                  <li>If auto-add fails, press <strong>Windows key</strong>, type <strong>Windows Security</strong>, open it.</li>
+                  <li>Click <strong>Virus &amp; threat protection</strong> → <strong>Manage settings</strong> under Virus &amp; threat protection settings.</li>
+                  <li>Scroll to <strong>Exclusions</strong> → <strong>Add or remove exclusions</strong> → <strong>Add an exclusion</strong> → <strong>Folder</strong>.</li>
+                  <li>Paste or browse to the Hermes folder path shown in the app.</li>
+                  <li>Confirm the folder appears in the exclusions list.</li>
                 </ol>
+                <div class="step-desc">If you skip this, Hermes install may fail silently or get quarantined. Fix Defender first, then install.</div>
               </div>
             </div>
 
             <div class="step-card">
               <div class="step-num">17</div>
               <div class="step-body">
-                <div class="step-title">Write compendium file again if needed</div>
-                <div class="step-desc">If you did not already click <strong>Save & Write Compendium</strong> in Setup, do it now.</div>
+                <div class="step-title">Install Hermes</div>
+                <div class="step-desc">Hermes installs inside this app only — nothing is added to your system-wide Python or PATH unless you do that separately.</div>
                 <ol class="howto-list">
-                  <li>Open the app <strong>Setup</strong> tab.</li>
-                  <li>Confirm your Blofin keys are saved.</li>
-                  <li>Click <strong>Save & Write Compendium</strong>.</li>
-                  <li>Confirm it says written.</li>
+                  <li>In the app <strong>Hermes</strong> tab, confirm <strong>Step 0</strong> (Defender) is done if you are on Windows.</li>
+                  <li>Click <strong>Install Hermes</strong>.</li>
+                  <li>Watch the <strong>Logs</strong> tab or the status text on the Hermes tab — first install can take several minutes.</li>
+                  <li>Do <strong>not</strong> close the app, sleep the PC, or minimize to tray during install.</li>
+                  <li>If it says <strong>checking</strong>, <strong>downloading</strong>, or <strong>installing</strong>, wait until it finishes.</li>
+                  <li>When status shows <strong>installed</strong> or the Install button changes to indicate success, continue.</li>
+                  <li>If install fails, read the first red error line in <strong>Logs</strong>, fix that item (often Defender), then click Install again.</li>
                 </ol>
+                <div class="step-desc">You only need a full Hermes install once per machine (unless you factory-reset the app data).</div>
               </div>
             </div>
 
             <div class="step-card">
               <div class="step-num">18</div>
               <div class="step-body">
-                <div class="step-title">Start Hermes dashboard and gateway</div>
-                <div class="step-desc">The dashboard shows what Hermes is doing. The gateway is required for cron jobs.</div>
+                <div class="step-title">Write compendium file again if needed</div>
+                <div class="step-desc">The compendium is a text file Hermes reads for your Blofin API keys and trading context. Saving in Setup writes encrypted creds locally; writing the compendium creates the file Hermes expects.</div>
                 <ol class="howto-list">
-                  <li>In the app <strong>Hermes</strong> tab, click <strong>Start Dashboard + Gateway</strong>.</li>
-                  <li>Wait for the status to change from <strong>Not running</strong>.</li>
-                  <li>Open <strong>Open in Browser</strong> if the embedded dashboard does not load.</li>
-                  <li>Confirm the dashboard opens at <strong>http://127.0.0.1:9119</strong>.</li>
+                  <li>Open the app <strong>Setup</strong> tab.</li>
+                  <li>Confirm <strong>Portal API Key</strong>, <strong>Blofin API Key</strong>, <strong>Secret Key</strong>, and <strong>Passphrase</strong> are all filled in.</li>
+                  <li>Click <strong>Test AI Credentials</strong> — wait for success.</li>
+                  <li>Click <strong>Test Blofin Credentials</strong> — wait for success (should show LIVE USDT available if USDT-M is funded).</li>
+                  <li>Click <strong>Save &amp; Write Compendium</strong>.</li>
+                  <li>Wait for the success message in Logs or on screen.</li>
+                  <li>Note the compendium path shown (usually in your <strong>Downloads</strong> folder).</li>
+                  <li>If you change any key later, repeat this step before expecting Hermes to pick up changes.</li>
                 </ol>
               </div>
             </div>
@@ -540,66 +638,96 @@
             <div class="step-card">
               <div class="step-num">19</div>
               <div class="step-body">
-                <div class="step-title">Auto-configure the trading cron</div>
-                <div class="step-desc">This tells Hermes to scan Blofin and trade every 10 minutes using market orders.</div>
+                <div class="step-title">Start Hermes dashboard and gateway</div>
+                <div class="step-desc">The dashboard shows what Hermes is doing. The <strong>gateway</strong> is required for cron jobs to fire — without it, nothing trades.</div>
                 <ol class="howto-list">
-                  <li>In the app <strong>Hermes</strong> tab, click <strong>Auto-Configure Cron</strong>.</li>
-                  <li>If it succeeds, the cron is active.</li>
-                  <li>If auto-config is unavailable, copy the prompt shown.</li>
-                  <li>Open the Hermes dashboard in your browser.</li>
-                  <li>Paste the prompt into the assistant/cron setup area.</li>
-                  <li>Save the cron.</li>
+                  <li>In the app <strong>Hermes</strong> tab, click <strong>Start Dashboard + Gateway</strong>.</li>
+                  <li>Wait for the status pill to change from <strong>Not running</strong> to <strong>Running</strong> (first start may take 30–60 seconds while the web UI loads).</li>
+                  <li>Scroll down on the Hermes tab — the embedded dashboard webview should appear.</li>
+                  <li>If the embedded view stays blank, click <strong>Open in Browser</strong>.</li>
+                  <li>Confirm your browser opens <strong>http://127.0.0.1:9119</strong> and the Hermes UI loads.</li>
+                  <li>In the browser dashboard, confirm you see assistant/chat or cron-related sections (exact layout may vary by Hermes version).</li>
+                  <li>Leave the dashboard running — do not stop it unless you are troubleshooting.</li>
+                  <li>On app restart, the app tries to auto-start dashboard + gateway; you can still click Start manually if needed.</li>
                 </ol>
+                <div class="step-desc">If gateway will not start, check Logs for Python/venv errors and confirm Hermes installed successfully in step 17.</div>
+              </div>
+            </div>
+
+            <div class="step-card">
+              <div class="step-num">20</div>
+              <div class="step-body">
+                <div class="step-title">Auto-configure the trading cron</div>
+                <div class="step-desc">This tells Hermes to scan Blofin on a schedule (every 10 minutes) and place trades using market orders per your compendium rules.</div>
+                <ol class="howto-list">
+                  <li>Confirm step 19 shows dashboard + gateway <strong>running</strong>.</li>
+                  <li>In the app <strong>Hermes</strong> tab, click <strong>Auto-Configure Cron</strong>.</li>
+                  <li>Wait for success text in Logs (model auto-selection may run in the background).</li>
+                  <li>If auto-config succeeds, the cron job is registered with Hermes.</li>
+                  <li>If auto-config is unavailable or fails, click to copy the cron prompt shown in the app.</li>
+                  <li>Open the Hermes dashboard in your browser (<strong>Open in Browser</strong>).</li>
+                  <li>Find the cron / scheduled job / assistant setup area in Hermes.</li>
+                  <li>Paste the prompt, save, and confirm the job appears on the schedule.</li>
+                  <li>Do not edit the prompt heavily on first setup — use the app-provided version unless you know what you are changing.</li>
+                </ol>
+                <div class="step-desc">The cron will not fire if the gateway is stopped or the PC sleeps. Keep step 4’s power settings in place.</div>
               </div>
             </div>
 
           <div class="step-card">
-            <div class="step-num">20</div>
+            <div class="step-num">21</div>
             <div class="step-body">
               <div class="step-title">Confirm Hermes is actually trading</div>
-              <div class="step-desc">Do not assume it works. Verify these exact signals.</div>
-              <div class="step-desc"><strong>Checklist:</strong></div>
+              <div class="step-desc">Do not assume it works because buttons turned green. Verify these exact signals across Trading, Logs, and Blofin.</div>
+              <div class="step-desc"><strong>Checklist — do every item:</strong></div>
               <ol class="howto-list">
-                <li>Keep the computer awake using step 4.</li>
-                <li>Open the app <strong>Trading</strong> tab.</li>
-                <li>Confirm <strong>Trading dashboard</strong> updates.</li>
-                <li>Confirm <strong>Last activity</strong> changes from <strong>Waiting for Hermes</strong>.</li>
-                <li>Confirm <strong>Recent Activity</strong> shows a Hermes cron tick.</li>
-                <li>If a trade happens, confirm <strong>Open positions</strong> appears.</li>
-                <li>Open the app <strong>Logs</strong> tab.</li>
-                <li>Look for successful cron activity.</li>
-                <li>If nothing happens after a few minutes, open the <strong>Hermes dashboard</strong> in browser and inspect manually.</li>
+                <li>Keep the computer awake using step 4 (plugged in, sleep = Never).</li>
+                <li>On Blofin, confirm <strong>USDT-M / Futures</strong> still shows your transferred USDT balance (step 15).</li>
+                <li>In KnightTrader, open the <strong>Trading</strong> tab and wait for the desk to load.</li>
+                <li>Confirm <strong>Account Equity</strong> on the desk matches roughly your USDT-M balance (not zero).</li>
+                <li>Confirm <strong>Trading dashboard</strong> monitor says <strong>Live</strong> or <strong>Live · SSE connected</strong>.</li>
+                <li>Confirm <strong>Last activity</strong> changes from <strong>Waiting for Hermes</strong> to something recent.</li>
+                <li>Scroll the desk to <strong>Recent Activity</strong> — look for a Hermes cron tick within the last 10–15 minutes.</li>
+                <li>If a trade was placed, scroll to <strong>Open Positions</strong> and confirm rows appear.</li>
+                <li>Open the app <strong>Logs</strong> tab — look for <strong>cron</strong>, <strong>gateway running</strong>, or successful Blofin test lines without repeated errors.</li>
+                <li>Open the Hermes dashboard in browser and confirm the cron/job shows as scheduled or recently executed.</li>
+                <li>If nothing happens after 15–20 minutes, do not deposit more — troubleshoot step 22 first.</li>
               </ol>
-              <div class="step-desc">If the Trading tab webview is blank, use the Hermes dashboard in the browser. The browser dashboard is the source of truth.</div>
+              <div class="step-desc">If the Trading tab webview is blank or frozen after tray restore, click <strong>Reload desk</strong> or use the Hermes browser dashboard as backup.</div>
               <div class="step-desc"><strong>What success looks like:</strong></div>
               <ol class="howto-list">
                 <li>Trading dashboard says <strong>Live · SSE connected</strong> or <strong>Live</strong>.</li>
                 <li>Last activity says <strong>Signal connected</strong> or shows a recent timestamp.</li>
-                <li>Recent Activity shows a line that says something like <strong>cron tick succeeded</strong> or a trade message.</li>
-                <li>Open positions shows a position if a trade was placed.</li>
-                <li>Equity number changes over time.</li>
+                <li>Recent Activity shows a line like <strong>cron tick succeeded</strong> or a trade-related message.</li>
+                <li>Account equity and exposure update when Blofin positions change.</li>
+                <li>Open positions shows rows when you have USDT-M positions on Blofin.</li>
+                <li>Equity curve (<strong>Account Growth</strong> section) seeds from your real balance over time.</li>
               </ol>
-              <div class="step-desc">If any of these are missing, do not close the app. Open the Hermes dashboard in browser from the Hermes tab and check the assistant/cron logs there.</div>
+              <div class="step-desc">If equity is zero but Blofin USDT-M has funds, re-run step 15 transfer, then <strong>Save &amp; Write Compendium</strong> and reload the Trading desk.</div>
             </div>
           </div>
 
           <div class="step-card">
-            <div class="step-num">21</div>
+            <div class="step-num">22</div>
             <div class="step-body">
               <div class="step-title">If something breaks, fix the first error message</div>
-              <div class="step-desc">Do not restart from the beginning. Read the exact message in Logs or on the button status, then fix that exact item.</div>
+              <div class="step-desc">Do not restart from step 1. Read the exact message in Logs or on the button status, then fix that one item.</div>
               <div class="step-desc"><strong>Common fixes:</strong></div>
               <ol class="howto-list">
-                <li><strong>Login fails:</strong> retype email and password. Check caps lock. Use <strong>Forgot password?</strong> if needed.</li>
-                <li><strong>Blofin test fails:</strong> double-check API Key, Secret Key, and Passphrase. Make sure you copied all three.</li>
-                <li><strong>Nous test fails:</strong> verify you selected a free model and pasted the exact Portal API key.</li>
+                <li><strong>Login fails:</strong> retype email and password. Check caps lock. Use <strong>Forgot password?</strong> on the membership site if needed.</li>
+                <li><strong>Blofin test fails:</strong> double-check API Key, Secret Key, and Passphrase. Re-copy from Blofin API Management. Confirm Compendium permission is enabled.</li>
+                <li><strong>Equity zero / no positions:</strong> confirm USDT is in <strong>USDT-M Futures</strong> on Blofin (step 15), not only Funding/Spot. Click <strong>Test Blofin Credentials</strong> again.</li>
+                <li><strong>Deposit not showing:</strong> check Coinbase send status and Blofin deposit history — wrong network is the usual cause.</li>
+                <li><strong>Nous test fails:</strong> confirm at least $5 credits on portal.nousresearch.com and paste the full API key created after top-up.</li>
                 <li><strong>VPN is U.S.:</strong> wait the full 1:40 or 1:50, then change server again. Do not rush.</li>
                 <li><strong>Dashboard blank:</strong> open <strong>Open in Browser</strong> from the Hermes tab. The browser dashboard is the source of truth.</li>
-                <li><strong>No trades yet:</strong> confirm Blofin has Futures/USDT-M balance, VPN is in an allowed country, and dashboard says gateway is running.</li>
+                <li><strong>App frozen after tray:</strong> restore from tray again, or click <strong>Reload desk</strong> on the Trading tab. Update to the latest app version if it keeps happening.</li>
+                <li><strong>No trades yet:</strong> confirm USDT-M balance, allowed VPN country, gateway running, and cron configured (steps 15, 19, 20).</li>
                 <li><strong>Cron not firing:</strong> click <strong>Auto-Configure Cron</strong> again, or paste the prompt into the Hermes dashboard manually.</li>
-                <li><strong>Computer slept:</strong> reopen the app, confirm dashboard is still running, and check Logs.</li>
+                <li><strong>Computer slept:</strong> reopen the app, confirm dashboard + gateway still running, restart them if Logs say stopped.</li>
+                <li><strong>SSE 401 / signal errors in Logs:</strong> desk may still show equity via direct Blofin read if keys are saved — fix Blofin keys in Setup first; SSE is separate from your exchange balance.</li>
               </ol>
-              <div class="step-desc">If you are stuck for more than 10 minutes, stop and review the exact error text. The fix is almost always one field, one network, or one missed confirmation.</div>
+              <div class="step-desc">If you are stuck for more than 10 minutes, stop and review the exact error text. The fix is almost always one field, one network, USDT in the wrong Blofin wallet, or one missed confirmation.</div>
             </div>
           </div>
 

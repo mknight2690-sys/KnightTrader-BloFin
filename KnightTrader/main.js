@@ -528,8 +528,16 @@ const HERMES_INSTALL = path.join(HERMES_HOME, 'hermes-agent');
 const HERMES_EXE     = path.join(HERMES_INSTALL, 'venv', 'Scripts', 'hermes.exe');
 
 // ── Encrypted credential store ─────────────────────────────────────────────
-const STORE_KEY  = Buffer.from('kt-aes256-key-knighttrader-blofin-2024!'); // 32 bytes
+const STORE_KEY_LEGACY = Buffer.from('kt-aes256-key-knighttrader-blofin-2024!');
+const STORE_KEY = crypto.createHash('sha256').update(STORE_KEY_LEGACY).digest();
 const STORE_PATH = path.join(app.getPath('userData'), 'kt-config.enc');
+
+function normalizeAesKey(key) {
+  const buf = Buffer.isBuffer(key) ? key : Buffer.from(String(key || ''));
+  if (buf.length === 32) return buf;
+  if (buf.length > 32) return buf.subarray(0, 32);
+  return crypto.createHash('sha256').update(buf).digest();
+}
 
 function encryptData(obj) {
   const iv  = crypto.randomBytes(16);
@@ -540,9 +548,16 @@ function encryptData(obj) {
 function decryptData(raw) {
   try {
     const { iv, data } = JSON.parse(raw);
-    const d = crypto.createDecipheriv('aes-256-cbc', STORE_KEY, Buffer.from(iv, 'hex'));
-    return JSON.parse(Buffer.concat([d.update(Buffer.from(data, 'hex')), d.final()]).toString('utf8'));
-  } catch { return null; }
+    const ivBuf = Buffer.from(iv, 'hex');
+    const dataBuf = Buffer.from(data, 'hex');
+    for (const key of [STORE_KEY, normalizeAesKey(STORE_KEY_LEGACY), STORE_KEY_LEGACY]) {
+      try {
+        const d = crypto.createDecipheriv('aes-256-cbc', normalizeAesKey(key), ivBuf);
+        return JSON.parse(Buffer.concat([d.update(dataBuf), d.final()]).toString('utf8'));
+      } catch {}
+    }
+  } catch {}
+  return null;
 }
 
 const BLOFIN_LIVE_URL = 'https://openapi.blofin.com';
@@ -641,7 +656,34 @@ function getBlohunterBridge() {
   return blohunterBridge;
 }
 
+function bootstrapBlofinFromCompendium() {
+  if (String(storeData.blofin?.apiKey || '').trim()) return false;
+  const compPath = getCompendiumPath();
+  if (!fs.existsSync(compPath)) return false;
+  try {
+    const parsed = parseCredentialFileContent(fs.readFileSync(compPath, 'utf8'));
+    const apiKey = String(parsed.blofin?.apiKey || '').trim();
+    const secretKey = String(parsed.blofin?.secretKey || '').trim();
+    const passphrase = String(parsed.blofin?.passphrase || '').trim();
+    if (!apiKey || !secretKey || !passphrase) return false;
+    storeData.blofin = {
+      ...storeData.blofin,
+      apiKey,
+      secretKey,
+      passphrase,
+      demoMode: parsed.blofin.demoMode ?? storeData.blofin.demoMode ?? false,
+    };
+    saveStore(storeData);
+    appendLog(`📂 Blofin credentials loaded from compendium for trading desk`, 'success');
+    return true;
+  } catch (e) {
+    appendLog(`ℹ Compendium credential bootstrap skipped: ${e.message}`, 'info');
+    return false;
+  }
+}
+
 async function syncBlohunterCredentials() {
+  bootstrapBlofinFromCompendium();
   const bridge = getBlohunterBridge();
   if (!storeData.blofin?.apiKey) return;
   await bridge.syncCredentials({
@@ -1127,15 +1169,17 @@ function unthrottleAllWebContents() {
   }
 }
 
-function notifyRendererTrayRestore() {
+let mainWindowWasHidden = false;
+let skipNextWindowShownRestore = true;
+
+function notifyRendererWindowShown() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   try {
     unthrottleAllWebContents();
-    // One debounced handler in the renderer listens for both channels.
+    // Single channel — renderer debounces; avoids double-restore races.
     mainWindow.webContents.send('kt-window-shown');
-    mainWindow.webContents.send('kt-restore-trading-webview');
   } catch (e) {
-    appendLog(`ℹ Tray restore notify skipped: ${e.message}`, 'info');
+    appendLog(`ℹ Window shown notify skipped: ${e.message}`, 'info');
   }
 }
 
@@ -1143,6 +1187,7 @@ function restoreFromTray() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   try {
     unthrottleAllWebContents();
+    mainWindowWasHidden = true;
     if (mainWindow.isMinimized()) mainWindow.restore();
     if (!mainWindow.isVisible()) mainWindow.show();
     mainWindow.setSkipTaskbar(false);
@@ -1155,17 +1200,16 @@ function restoreFromTray() {
       mainWindow.setSize(w, h + 1);
       setImmediate(() => { if (!mainWindow.isDestroyed()) mainWindow.setSize(w, h); });
     } catch (_) {}
-    // Wait until the window is actually visible/laid out before telling
-    // webviews to unpark/reload — reloading while still parked (0×0) was
-    // leaving the desk blank/frozen after tray restore.
-    setTimeout(() => notifyRendererTrayRestore(), 120);
+    // kt-window-shown is sent from the BrowserWindow "show" handler only —
+    // do not notify here too (that duplicated restore and reloaded webviews).
   } catch (e) {
     appendLog(`⚠ Tray restore failed: ${e.message}`, 'warn');
   }
 }
 
 function refreshTradingWebviewAfterRestore() {
-  notifyRendererTrayRestore();
+  mainWindowWasHidden = true;
+  notifyRendererWindowShown();
 }
 
 function quitFromTray() {
@@ -2617,6 +2661,13 @@ function registerIPC() {
   ipcMain.handle('vpn-allowed',       () => vpn.allowedCountryList());
 
   ipcMain.handle('get-blohunter-preload-path', () => pathToFileURL(path.join(__dirname, 'blohunter-preload.js')).href);
+  ipcMain.handle('unthrottle-webview', (_e, webContentsId) => {
+    const wc = webContents.fromId(webContentsId);
+    if (wc) {
+      try { wc.setBackgroundThrottling(false); } catch (_) {}
+    }
+    return { ok: !!wc };
+  });
   ipcMain.handle('attach-trading-webview', (_e, webContentsId) => {
     const wc = webContents.fromId(webContentsId);
     if (wc) {
@@ -2712,7 +2763,11 @@ function createWindow() {
   });
   try { mainWindow.webContents.setBackgroundThrottling(false); } catch (_) {}
   mainWindow.loadFile('renderer/index.html');
-  mainWindow.once('ready-to-show', () => { mainWindow.show(); mainWindow.focus(); });
+  mainWindow.once('ready-to-show', () => {
+    skipNextWindowShownRestore = true;
+    mainWindow.show();
+    mainWindow.focus();
+  });
   mainWindow.webContents.on('did-finish-load', () => {
     try { mainWindow.webContents.setBackgroundThrottling(false); } catch (_) {}
   });
@@ -2722,7 +2777,11 @@ function createWindow() {
     mainWindow.focus();
   });
   mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.on('hide', () => {
+    mainWindowWasHidden = true;
+  });
   mainWindow.on('minimize', () => {
+    mainWindowWasHidden = true;
     mainWindow.hide();
     buildTray();
     appendLog('🧩 Minimized to system tray — double-click tray icon to restore', 'info');
@@ -2731,7 +2790,16 @@ function createWindow() {
     try {
       unthrottleAllWebContents();
       mainWindow.focus();
-      setTimeout(() => notifyRendererTrayRestore(), 120);
+      if (skipNextWindowShownRestore) {
+        skipNextWindowShownRestore = false;
+        mainWindowWasHidden = false;
+        return;
+      }
+      if (!mainWindowWasHidden) return;
+      mainWindowWasHidden = false;
+      // Wait for layout after unparking — do not reload webviews (that
+      // forced Hermes gateway/dashboard reconnect on every taskbar click).
+      setTimeout(() => notifyRendererWindowShown(), 180);
     } catch (_) {}
   });
   mainWindow.on('close', (e) => {
@@ -3003,6 +3071,10 @@ app.whenReady().then(async () => {
   attachBhProtocol(session.fromPartition('persist:blohunter-trading'));
 
   registerIPC();
+  bootstrapBlofinFromCompendium();
+  syncBlohunterCredentials().catch((e) => {
+    appendLog(`ℹ BloHunter credential sync deferred: ${e.message}`, 'info');
+  });
   createWindow();
   buildTray();
   appendLog(`🚀 KnightTrader Blofin started. Hermes sandbox: ${HERMES_HOME}`, 'success');

@@ -389,15 +389,23 @@ function loadDashboard(url) {
   el.hermesWebview.src = url;
 }
 
+function unthrottleGuestWebview(webview) {
+  if (!webview) return;
+  try {
+    const wcId = webview.getWebContentsId();
+    if (window.kt?.unthrottleWebview) {
+      window.kt.unthrottleWebview(wcId).catch(() => {});
+    } else {
+      window.kt.attachTradingWebview(wcId).catch(() => {});
+    }
+  } catch (_) {}
+}
+
 function bindHermesWebview() {
   const webview = el.hermesWebview;
   if (!webview || webview.dataset.bound === '1') return;
   webview.dataset.bound = '1';
-  webview.addEventListener('did-attach', () => {
-    try {
-      window.kt.attachTradingWebview(webview.getWebContentsId()).catch(() => {});
-    } catch (_) {}
-  });
+  webview.addEventListener('did-attach', () => unthrottleGuestWebview(webview));
   webview.addEventListener('dom-ready', () => {
     parkWebview(webview, currentTab !== 'hermes');
   });
@@ -725,11 +733,50 @@ async function initTradingTab() {
 }
 
 let trayRestoreTimer = null;
+let trayRestoreInFlight = false;
+
+function nudgeGuestWebviews() {
+  const guests = [
+    { vw: el.tradingWebview, tab: 'trading', attachTrading: true },
+    { vw: el.hermesWebview, tab: 'hermes', attachTrading: false },
+  ];
+
+  for (const { vw, tab, attachTrading } of guests) {
+    if (!vw) continue;
+    parkWebview(vw, currentTab !== tab);
+    if (!guestHasPage(vw)) continue;
+    try {
+      if (attachTrading) {
+        window.kt.attachTradingWebview(vw.getWebContentsId()).catch(() => {});
+      } else {
+        unthrottleGuestWebview(vw);
+      }
+    } catch (_) {}
+  }
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      for (const { vw } of guests) {
+        if (!vw || !guestHasPage(vw)) continue;
+        try {
+          vw.executeJavaScript('window.dispatchEvent(new Event("resize"))').catch(() => {});
+        } catch (_) {}
+      }
+      // Ensure bridge/runtime is up without reloading the desk (reload
+      // disconnects SSE and forces Hermes dashboard/gateway UI reconnect).
+      if (currentTab === 'trading' && tradingLoaded) {
+        window.kt.startTradingDashboard().catch(() => {});
+      }
+    });
+  });
+}
 
 function restoreUiFromTray() {
   if (trayRestoreTimer) clearTimeout(trayRestoreTimer);
   trayRestoreTimer = setTimeout(() => {
     trayRestoreTimer = null;
+    if (trayRestoreInFlight) return;
+    trayRestoreInFlight = true;
     try {
       // The bottom-left popup parks BOTH webviews off-screen; if it was
       // open when the user minimized to tray, restore would look frozen.
@@ -739,44 +786,12 @@ function restoreUiFromTray() {
 
       syncWebviewParking(currentTab);
       void document.body.offsetHeight;
-
-      const guests = [
-        { vw: el.tradingWebview, tab: 'trading' },
-        { vw: el.hermesWebview, tab: 'hermes' },
-      ];
-
-      for (const { vw, tab } of guests) {
-        if (!vw) continue;
-        parkWebview(vw, currentTab !== tab);
-        if (!guestHasPage(vw)) continue;
-        try {
-          window.kt.attachTradingWebview(vw.getWebContentsId()).catch(() => {});
-        } catch (_) {}
-      }
-
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          for (const { vw } of guests) {
-            if (!vw || !guestHasPage(vw)) continue;
-            try {
-              vw.executeJavaScript('window.dispatchEvent(new Event("resize"))').catch(() => {});
-            } catch (_) {}
-          }
-
-          const active = guests.find((g) => g.tab === currentTab);
-          if (active?.vw && guestHasPage(active.vw)) {
-            try { active.vw.reload(); } catch (_) {}
-          } else if (currentTab === 'trading') {
-            initTradingTab();
-          }
-        });
-      });
+      nudgeGuestWebviews();
     } catch (_) {}
-  }, 80);
-}
-
-function handleTrayRestore() {
-  restoreUiFromTray();
+    finally {
+      trayRestoreInFlight = false;
+    }
+  }, 120);
 }
 
 if (window.kt?.onLogLine) {
@@ -787,16 +802,8 @@ if (window.kt?.onUpdateError) {
   window.kt.onUpdateError(() => {});
 }
 
-// Tray restore: main process sends kt-restore-trading-webview when the window
-// is brought back from the tray. Reload the trading desk so it isn't left
-// parked/blank. (Previously this used window.ipcRenderer.on, which the
-// preload bridge never exposed — so the listener never registered and the
-// app appeared frozen after restore.)
-if (window.kt?.onRestoreTradingWebview) {
-  window.kt.onRestoreTradingWebview(handleTrayRestore);
-}
-
-// Window shown: fires on first show AND on every restore from tray.
+// Window shown after tray/taskbar restore — unpark webviews and nudge repaint.
+// Do not reload guests here; that forced Hermes gateway/dashboard reconnect.
 if (window.kt?.onWindowShown) {
   window.kt.onWindowShown(restoreUiFromTray);
 }
@@ -1236,8 +1243,7 @@ function setPopupOpen(open) {
     if (el.hermesWebview) el.hermesWebview.classList.add('webview-parked');
     if (el.tradingWebview) el.tradingWebview.classList.add('webview-parked');
   } else {
-    if (el.hermesWebview) el.hermesWebview.classList.remove('webview-parked');
-    if (el.tradingWebview) el.tradingWebview.classList.remove('webview-parked');
+    try { syncWebviewParking(currentTab); } catch (_) {}
   }
 
   const show = () => {
