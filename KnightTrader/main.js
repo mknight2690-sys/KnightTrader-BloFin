@@ -1330,6 +1330,7 @@ function unthrottleAllWebContents() {
 
 let mainWindowWasHidden = false;
 let skipNextWindowShownRestore = true;
+let windowShownNotifyTimer = null;
 
 function notifyRendererWindowShown() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -1342,25 +1343,45 @@ function notifyRendererWindowShown() {
   }
 }
 
+function scheduleWindowShownNotify() {
+  if (skipNextWindowShownRestore || !mainWindowWasHidden) return;
+  if (windowShownNotifyTimer) clearTimeout(windowShownNotifyTimer);
+  windowShownNotifyTimer = setTimeout(() => {
+    windowShownNotifyTimer = null;
+    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
+    mainWindowWasHidden = false;
+    notifyRendererWindowShown();
+  }, 180);
+}
+
 function restoreFromTray() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   try {
     unthrottleAllWebContents();
+    // Set before show()/restore() so their handlers know this was a tray wake.
     mainWindowWasHidden = true;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    if (!mainWindow.isVisible()) mainWindow.show();
     mainWindow.setSkipTaskbar(false);
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    // Always show. A minimized window is still "visible" to Electron, so
+    // gating on isVisible() skipped show() and the renderer never woke up.
+    mainWindow.show();
+    // A tray-menu click does not activate the app on Windows. show()+focus()
+    // paints the frameless window but it never receives mouse input.
+    if (process.platform === 'win32') {
+      mainWindow.setAlwaysOnTop(true);
+      try { app.focus({ steal: true }); } catch (_) {}
+    }
+    mainWindow.moveTop();
     mainWindow.focus();
-    // Nudge the renderer to repaint after being hidden. A hidden window can
-    // leave webviews in a throttled/blank state; toggling the size by 0px
-    // forces a full reflow + repaint without a visible flicker.
+    if (process.platform === 'win32') mainWindow.setAlwaysOnTop(false);
     try {
       const [w, h] = mainWindow.getSize();
       mainWindow.setSize(w, h + 1);
       setImmediate(() => { if (!mainWindow.isDestroyed()) mainWindow.setSize(w, h); });
     } catch (_) {}
-    // kt-window-shown is sent from the BrowserWindow "show" handler only —
-    // do not notify here too (that duplicated restore and reloaded webviews).
+    // "show" does not fire when the window was only minimized. Notify here
+    // as well; the scheduler collapses the duplicate with the show handler.
+    scheduleWindowShownNotify();
   } catch (e) {
     appendLog(`⚠ Tray restore failed: ${e.message}`, 'warn');
   }
@@ -2730,6 +2751,7 @@ function factoryResetLocalState() {
       errors.push(`${item.label}: ${e.message}`);
     }
   }
+  try { blohunterBridge?.storage?.discardPending(); } catch (_) {}
   storeData = JSON.parse(JSON.stringify(DEFAULTS));
   blohunterBridge = null;
   dashboardSessionToken = null;
@@ -2937,26 +2959,30 @@ function createWindow() {
   });
   mainWindow.on('minimize', () => {
     mainWindowWasHidden = true;
-    mainWindow.hide();
     buildTray();
+    // Hide after the minimize transition. Hiding inside this handler leaves
+    // Windows with a window that restores on screen but never composites.
+    setTimeout(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (!mainWindow.isMinimized() && mainWindow.isVisible()) return;
+      try { mainWindow.hide(); } catch (_) {}
+    }, 50);
     appendLog('🧩 Minimized to system tray — double-click tray icon to restore', 'info');
   });
-  mainWindow.on('show', () => {
+  const handleWindowShown = () => {
     try {
       unthrottleAllWebContents();
-      mainWindow.focus();
       if (skipNextWindowShownRestore) {
         skipNextWindowShownRestore = false;
         mainWindowWasHidden = false;
         return;
       }
-      if (!mainWindowWasHidden) return;
-      mainWindowWasHidden = false;
-      // Wait for layout after unparking — do not reload webviews (that
-      // forced Hermes gateway/dashboard reconnect on every taskbar click).
-      setTimeout(() => notifyRendererWindowShown(), 180);
+      // Do not reload webviews here — that forced Hermes to reconnect.
+      scheduleWindowShownNotify();
     } catch (_) {}
-  });
+  };
+  mainWindow.on('show', handleWindowShown);
+  mainWindow.on('restore', handleWindowShown);
   mainWindow.on('close', (e) => {
     if (!mainWindow) return;
     if (mainWindow.isDestroyed()) return;
@@ -3288,6 +3314,7 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 // close handler was bypassed but not yet destroyed), tear it down here so
 // nothing can abort app.quit() and block the NSIS installer.
 app.on('before-quit', () => {
+  try { blohunterBridge?.storage?.flushSync(); } catch (_) {}
   if (!isQuittingForUpdate) return;
   try { killHermesChildProcesses(); } catch (_) {}
   for (const w of BrowserWindow.getAllWindows()) {
