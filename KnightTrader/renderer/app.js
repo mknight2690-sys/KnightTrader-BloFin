@@ -1109,14 +1109,29 @@ window.kt.onUpdateDownloaded((info) => {
   setPopupUpdateStatus('Update ready — restart to install');
 });
 window.kt.onUpdateError((error) => {
-  let msg = 'Update failed';
+  let raw = '';
   if (error && typeof error === 'object') {
-    msg = error.message || error.error || JSON.stringify(error);
+    raw = error.message || error.error || JSON.stringify(error);
   } else if (typeof error === 'string') {
-    msg = error;
+    raw = error;
   } else if (error != null) {
-    msg = String(error);
+    raw = String(error);
   }
+  // electron-updater errors sometimes carry the entire response body of a
+  // failed feed fetch (an HTML 404 / Cloudflare page) as the message string.
+  // Pushing that into the menu made the whole popup render as raw HTML
+  // ("gobbledygook"). Collapse any HTML-ish / oversized payload to a short,
+  // human-readable status and log the full detail to the console instead.
+  let msg = String(raw || 'Update failed');
+  const looksLikeHtml = /^\s*<(!doctype|html|head|body|h1|p|br|center)/i.test(msg)
+    || /<!DOCTYPE/i.test(msg)
+    || /<html/i.test(msg);
+  if (looksLikeHtml) {
+    msg = 'Update check failed — check connection';
+  } else if (msg.length > 80) {
+    msg = msg.slice(0, 77) + '…';
+  }
+  console.error('[update] error:', raw);
   setPopupUpdateStatus(msg);
 });
 

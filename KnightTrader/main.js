@@ -78,7 +78,15 @@ async function downloadFileToPath(url, dest) {
   });
 }
 function broadcastUpdate(channel, payload) {
-  for (const wc of webContents.getAllWebContents()) wc.send(channel, payload);
+  // Only the main renderer has the preload bridge that listens for these
+  // channels. Sending raw update-error objects (which can carry an entire
+  // HTML 404 body as the message) to the BloHunter/Hermes webviews is both
+  // useless and messy. Target the main window only.
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(channel, payload);
+    }
+  } catch (_) {}
 }
 
 // ── electron-updater wiring ────────────────────────────────────────────────
@@ -179,19 +187,39 @@ async function ensureInstallerReady(timeoutMs = 180000) {
 
 // Backup relaunch sentinel. The NSIS installer's own --force-run flag is
 // unreliable in unattended/silent mode, so before we quit we spawn a
-// detached, hidden cmd process that waits for the installer to finish
-// replacing files and then launches the app exe. If the installer's
-// force-run also fires, the single-instance lock collapses the two
-// launches into one. This guarantees the app comes back up after an
-// auto-update even on configs where --force-run alone doesn't relaunch.
+// detached, hidden process that waits for the OLD app to fully exit (so
+// the single-instance lock releases and the installer can replace files),
+// then retries launching the (now-updated) app exe until it succeeds.
+//
+// The previous implementation used a fixed `timeout /t 12` then launched —
+// but if the NSIS silent install took longer than 12s, the launch hit an
+// exe still being replaced and silently failed, so the app never came back.
+// Waiting on the old PID + retrying the launch fixes that race.
 function spawnRelaunchSentinel() {
   try {
     const exePath = process.execPath;
     if (!exePath) return;
-    // Wait ~12s for the NSIS silent install to finish, then launch the
-    // (now-updated) app. Use start "" so a console window doesn't flash.
-    const cmd = `timeout /t 12 /nobreak >nul & start "" "${exePath}"`;
-    const child = spawn('cmd.exe', ['/c', cmd], { detached: true, stdio: 'ignore', windowsHide: true });
+    const oldPid = process.pid;
+    const safeExe = String(exePath).replace(/"/g, '""');
+    // PowerShell sentinel (always present on Win10/11):
+    //   1. Poll up to ~30s for the old app PID to disappear (lock release).
+    //   2. Settle 2s for the NSIS installer to finish replacing files.
+    //   3. Retry launching the exe for up to ~30s (installer may still be
+    //      finishing and holding the exe; Start-Process throws while it
+    //      does, and we retry until it succeeds).
+    const psScript = [
+      '$ErrorActionPreference="SilentlyContinue"',
+      `$oldPid=${oldPid}`,
+      `$exe="${safeExe}"`,
+      'for($i=0;$i -lt 60;$i++){ if(-not(Get-Process -Id $oldPid)){ break }; Start-Sleep -Milliseconds 500 }',
+      'Start-Sleep -Seconds 2',
+      'for($i=0;$i -lt 60;$i++){ try{ Start-Process -FilePath $exe -ErrorAction Stop; break }catch{ Start-Sleep -Milliseconds 500 } }',
+    ].join(';');
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', psScript],
+      { detached: true, stdio: 'ignore', windowsHide: true }
+    );
     child.unref();
     appendLog('🔁 Relaunch sentinel armed — app will restart after install', 'info');
   } catch (e) {
