@@ -243,26 +243,38 @@ function psSingleQuoted(value) {
 // This sentinel is started with `cmd /c start` so it breaks out of that job,
 // then waits until the Setup exe has exited before launching, and retries if
 // the new process dies immediately (single-instance collision / file lock).
+function getInstallerProcessPrefix() {
+  const fromPath = downloadedInstallerPath
+    ? path.basename(downloadedInstallerPath, '.exe')
+    : '';
+  if (fromPath) return fromPath.replace(/-\d+\.\d+\.\d+$/i, '');
+  return 'KnightTrader-Blofin-Setup';
+}
+
 function spawnRelaunchSentinel() {
   try {
     const exePath = process.execPath;
     if (!exePath) return;
     const scriptPath = path.join(os.tmpdir(), 'knighttrader-relaunch.ps1');
     const logPath = path.join(os.tmpdir(), 'knighttrader-relaunch.log');
+    const setupPrefix = getInstallerProcessPrefix();
     const script = [
       "$ErrorActionPreference = 'Continue'",
       `$log = ${psSingleQuoted(logPath)}`,
       `$oldPid = ${Number(process.pid) || 0}`,
       `$exe = ${psSingleQuoted(exePath)}`,
+      `$setupPrefix = ${psSingleQuoted(setupPrefix)}`,
       'function Log([string]$m) {',
       "  Add-Content -LiteralPath $log -Value ((Get-Date -Format o) + ' ' + $m)",
       '}',
-      "function InstallerRunning {",
-      "  $hit = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like 'KnightTrader-Blofin-Setup*' })",
+      'function InstallerRunning {',
+      '  $hit = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {',
+      '    $_.ProcessName -like ($setupPrefix + ''*'') -or $_.ProcessName -like ''KnightTrader*Blofin*Setup*''',
+      '  })',
       '  return $hit.Length -gt 0',
       '}',
       "Log 'sentinel-start'",
-      '$deadline = (Get-Date).AddSeconds(120)',
+      '$deadline = (Get-Date).AddSeconds(180)',
       'while ((Get-Date) -lt $deadline) {',
       '  if (-not (Get-Process -Id $oldPid -ErrorAction SilentlyContinue)) { break }',
       '  Start-Sleep -Milliseconds 400',
@@ -270,25 +282,31 @@ function spawnRelaunchSentinel() {
       "Log 'old-pid-gone'",
       'Start-Sleep -Seconds 2',
       '$seen = $false',
-      '$appearBy = (Get-Date).AddSeconds(45)',
+      '$appearBy = (Get-Date).AddSeconds(90)',
       'while ((Get-Date) -lt $appearBy) {',
       '  if (InstallerRunning) { $seen = $true; break }',
       '  Start-Sleep -Milliseconds 500',
       '}',
       "Log ('installer-seen=' + $seen)",
       'if ($seen) {',
-      '  $doneBy = (Get-Date).AddMinutes(4)',
+      '  $doneBy = (Get-Date).AddMinutes(6)',
       '  while ((Get-Date) -lt $doneBy) {',
       '    if (-not (InstallerRunning)) { break }',
       '    Start-Sleep -Seconds 1',
       '  }',
       "  Log 'installer-gone'",
+      '} else {',
+      '  Start-Sleep -Seconds 6',
       '}',
       'Start-Sleep -Seconds 2',
-      'for ($i = 0; $i -lt 12; $i++) {',
+      'for ($i = 0; $i -lt 20; $i++) {',
+      '  if (InstallerRunning) {',
+      '    Start-Sleep -Seconds 2',
+      '    continue',
+      '  }',
       '  try {',
-      '    $p = Start-Process -FilePath $exe -PassThru -ErrorAction Stop',
-      '    Start-Sleep -Seconds 4',
+      '    $p = Start-Process -FilePath $exe -ArgumentList ''--updated'' -PassThru -ErrorAction Stop',
+      '    Start-Sleep -Seconds 5',
       '    if ($p -and -not $p.HasExited) {',
       "      Log ('running pid=' + $p.Id)",
       '      exit 0',
@@ -297,7 +315,7 @@ function spawnRelaunchSentinel() {
       '  } catch {',
       "    Log ('start-failed attempt=' + $i + ' ' + $_.Exception.Message)",
       '  }',
-      '  Start-Sleep -Seconds 2',
+      '  Start-Sleep -Seconds 3',
       '}',
       "Log 'gave-up'",
     ].join('\r\n');
@@ -351,7 +369,11 @@ async function shutdownAllServicesForInstall() {
   killOtherAppInstances();
 }
 
+let updateInstallInProgress = false;
+
 async function beginSilentUpdateInstall() {
+  if (updateInstallInProgress) return;
+  updateInstallInProgress = true;
   isQuittingForUpdate = true;
   appendLog('🔄 Shutting down for update (tray + Hermes + desk)…', 'info');
   try {
@@ -366,21 +388,32 @@ async function beginSilentUpdateInstall() {
 
   spawnRelaunchSentinel();
   try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
-  for (const w of BrowserWindow.getAllWindows()) {
-    try { if (!w.isDestroyed()) w.destroy(); } catch (_) {}
-  }
   try { app.releaseSingleInstanceLock(); } catch (_) {}
+
+  // Do NOT destroy BrowserWindows before quitAndInstall(). Destroying the
+  // last window fires window-all-closed → app.quit() synchronously, which
+  // can exit the process before quitAndInstall() spawns the NSIS installer.
   autoUpdater.quitAndInstall(true, true);
-  // quitAndInstall only queues app.quit() on the next tick. If a close
-  // handler still swallows that, force the process down so NSIS can replace
-  // files. The sentinel is already outside this process.
+
+  // Safety net: if tray/close handlers block app.quit(), tear down and exit
+  // so the installer can replace files. The relaunch sentinel runs outside
+  // this process tree.
   setTimeout(() => {
-    try { app.exit(0); } catch (_) {}
-  }, 4000).unref?.();
+    try {
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.destroy();
+      }
+      app.exit(0);
+    } catch (_) {}
+  }, 6000).unref?.();
 }
 
-function scheduleSilentAutoRestart(delayMs = 45000) {
-  if (autoRestartTimer) return; // already scheduled
+function scheduleSilentAutoRestart(delayMs = 15000) {
+  if (updateInstallInProgress) return;
+  if (autoRestartTimer) {
+    clearTimeout(autoRestartTimer);
+    autoRestartTimer = null;
+  }
   appendLog(`⏱ Auto-restart in ${Math.round(delayMs / 1000)}s to install update`, 'info');
   autoRestartTimer = setTimeout(async () => {
     autoRestartTimer = null;
@@ -447,8 +480,9 @@ async function checkForUpdatesFromMain() {
       };
     }
     await waitForDownloadedUpdate(120000);
-    if (updateDownloadedInfo) {
+    if (updateDownloadedInfo && installerFileExists()) {
       broadcastUpdate('update-downloaded', { version: updateDownloadedInfo.version || remote });
+      scheduleSilentAutoRestart();
     }
     return {
       ok: true,
@@ -481,6 +515,10 @@ async function quitAndInstallFromMain() {
     return { ok: false, error: 'Updates install only in the packaged app' };
   }
   try {
+    if (autoRestartTimer) {
+      clearTimeout(autoRestartTimer);
+      autoRestartTimer = null;
+    }
     appendLog('🔄 Restart & Update requested…', 'info');
     if (!updateDownloadedInfo || !installerFileExists()) {
       await checkForUpdatesFromMain();
@@ -3470,6 +3508,9 @@ app.whenReady().then(async () => {
       broadcastUpdate('update-downloaded', {
         version: updateDownloadedInfo.version || app.getVersion(),
       });
+      // Resume a download that finished while the app was still running, or
+      // install immediately if a prior restart attempt failed mid-flight.
+      scheduleSilentAutoRestart(5000);
     }
   }).catch(() => {});
 
@@ -3508,7 +3549,10 @@ app.whenReady().then(async () => {
     }
   });
 });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => {
+  if (isQuittingForUpdate) return;
+  if (process.platform !== 'darwin') app.quit();
+});
 // Force-quit safety net for updates: if any window survives the close
 // flow while we're installing an update (e.g. a hidden tray window whose
 // close handler was bypassed but not yet destroyed), tear it down here so

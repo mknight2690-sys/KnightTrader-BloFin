@@ -24,6 +24,6 @@
   IfSilent kt_silent_relaunch kt_skip_relaunch
   kt_silent_relaunch:
     SetOutPath "$INSTDIR"
-    Exec '"$INSTDIR\${APP_EXECUTABLE_FILENAME}"'
+    Exec '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" --updated'
   kt_skip_relaunch:
 !macroend

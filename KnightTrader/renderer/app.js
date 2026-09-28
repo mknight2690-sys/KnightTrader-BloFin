@@ -1172,8 +1172,8 @@ window.kt.onUpdateNotAvailable((info) => {
   setPopupUpdateStatus(`Up to date (${current || 'latest'})`);
 });
 window.kt.onUpdateDownloaded((info) => {
-  setUpdateBannerVisible(true, 'Update ready', 'Restart to apply the latest version.');
-  setPopupUpdateStatus('Update ready — restart to install');
+  setUpdateBannerVisible(true, 'Update ready', 'Installing automatically in ~15 seconds. Restart now to skip the wait.');
+  setPopupUpdateStatus('Update ready — auto-restart in ~15s');
 });
 window.kt.onUpdateError((error) => {
   let raw = '';
