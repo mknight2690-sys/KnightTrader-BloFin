@@ -284,8 +284,71 @@ function reportStuckUpdateIfNeeded() {
   } catch (_) {}
 }
 
+function getInstallDir() {
+  return path.dirname(process.execPath);
+}
+
 function getAppExecutableFileName() {
   return path.basename(process.execPath || 'KnightTrader Blofin.exe');
+}
+
+function getBundledRelaunchLoopPath() {
+  const besideExe = path.join(getInstallDir(), 'relaunch-loop.bat');
+  if (fs.existsSync(besideExe)) return besideExe;
+  const inApp = path.join(__dirname, 'relaunch-loop.bat');
+  if (fs.existsSync(inApp)) return inApp;
+  return null;
+}
+
+function materializeRelaunchScripts(installDir) {
+  const relaunchDir = path.join(os.tmpdir(), 'knighttrader-relaunch');
+  fs.mkdirSync(relaunchDir, { recursive: true });
+  const exePath = path.join(installDir, getAppExecutableFileName());
+  const startBat = path.join(relaunchDir, 'START.bat');
+  const startContent = `@echo off\r\ncd /d "${installDir}"\r\nstart "" "${exePath}" --updated\r\nexit /b 0\r\n`;
+  fs.writeFileSync(startBat, startContent, 'utf8');
+  try { fs.writeFileSync(path.join(installDir, 'START.bat'), startContent, 'utf8'); } catch (_) {}
+  const loopBat = path.join(relaunchDir, 'relaunch-loop.bat');
+  const bundledLoop = getBundledRelaunchLoopPath();
+  if (bundledLoop) fs.copyFileSync(bundledLoop, loopBat);
+  try {
+    if (bundledLoop) fs.copyFileSync(bundledLoop, path.join(installDir, 'relaunch-loop.bat'));
+  } catch (_) {}
+  return { relaunchDir, startBat, loopBat };
+}
+
+function spawnPostInstallRelaunchLoop(installerPath) {
+  if (process.platform !== 'win32') return;
+  try {
+    const installDir = getInstallDir();
+    const { loopBat } = materializeRelaunchScripts(installDir);
+    if (!fs.existsSync(loopBat)) {
+      appendLog('⚠ relaunch-loop.bat missing — cannot arm post-install relaunch', 'warn');
+      return;
+    }
+    const flagPath = path.join(app.getPath('userData'), 'kt-relaunch-ok.flag');
+    const lockPath = path.join(os.tmpdir(), 'knighttrader-relaunch.lock');
+    const logPath = path.join(os.tmpdir(), 'knighttrader-relaunch.log');
+    try {
+      if (fs.existsSync(lockPath)) {
+        const age = Date.now() - fs.statSync(lockPath).mtimeMs;
+        if (age > 20 * 60 * 1000) fs.unlinkSync(lockPath);
+      }
+    } catch (_) {}
+    try { fs.unlinkSync(flagPath); } catch (_) {}
+    const oldPid = Number(process.pid) || 0;
+    const setupMatch = installerPath
+      ? path.basename(installerPath, path.extname(installerPath))
+      : 'KnightTrader-Blofin-Setup';
+    const child = spawn('cmd.exe', [
+      '/d', '/c',
+      `start "" /MIN "${loopBat}" "${installDir}" ${oldPid} "${flagPath}" "${setupMatch}"`,
+    ], { detached: true, stdio: 'ignore', windowsHide: true });
+    child.unref();
+    appendLog(`🔁 Post-install relaunch loop armed — log: ${logPath}`, 'info');
+  } catch (e) {
+    appendLog(`⚠ Post-install relaunch loop failed: ${e?.message || e}`, 'warn');
+  }
 }
 
 function killOtherAppInstances() {
@@ -341,9 +404,8 @@ async function beginSilentUpdateInstall() {
 
   await shutdownAllServicesForInstall();
 
-  // Relaunch ONLY after NSIS finishes (customInstall → relaunch-loop.bat).
-  // Spawning START.bat before the installer runs relaunches the OLD exe and
-  // blocks file replacement — the root cause of "updates restart but version unchanged".
+  // Detached relaunch loop waits for the installer process to exit, then
+  // retries START.bat. Must spawn AFTER the installer, never before it.
   try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
   try { app.releaseSingleInstanceLock(); } catch (_) {}
 
@@ -351,7 +413,8 @@ async function beginSilentUpdateInstall() {
   if (process.platform === 'win32' && installer && fs.existsSync(installer)) {
     appendLog(`🔄 Running silent installer: ${path.basename(installer)}`, 'info');
     spawn(installer, ['/S'], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
-    setTimeout(() => { try { app.exit(0); } catch (_) {} }, 1500).unref?.();
+    spawnPostInstallRelaunchLoop(installer);
+    setTimeout(() => { try { app.exit(0); } catch (_) {} }, 2000).unref?.();
     return;
   }
 

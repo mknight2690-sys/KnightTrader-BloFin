@@ -13,18 +13,7 @@
   Sleep 2000
 !macroend
 
-; Silent auto-update relaunch.
-;
-; Assisted NSIS (oneClick: false) only relaunches on --force-run via
-; StdUtils.ExecShellAsUser. That call no-ops when electron-updater spawned
-; the installer detached, so the app quits, the update installs, and nothing
-; comes back. Exec() starts the exe directly and works from that context.
+; Post-update relaunch is handled by a detached relaunch-loop.bat spawned
+; from the app AFTER the silent installer starts. Running it here via Exec()
+; deadlocks because the installer is still running during customInstall.
 ; Interactive installs still use the finish-page "Run" checkbox.
-!macro customInstall
-  IfSilent kt_silent_relaunch kt_skip_relaunch
-  kt_silent_relaunch:
-    SetOutPath "$INSTDIR"
-    ; Retry START.bat until the app process + kt-relaunch-ok.flag confirm startup.
-    Exec '"$INSTDIR\relaunch-loop.bat" "$INSTDIR" 0'
-  kt_skip_relaunch:
-!macroend
