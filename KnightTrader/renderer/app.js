@@ -1127,9 +1127,10 @@ Object.entries(LINKS).forEach(([id, url]) => {
   if (elem) elem.addEventListener('click', (e) => { e.preventDefault(); window.kt.openExternal(url); });
 });
 
-// ── Update banner (step 1: download, step 2: restart) ───────────
+// ── Update banner (auto: download → restart, visible progress) ──
 let updateUiState = 'idle';
 let pendingUpdateVersion = '';
+let autoInstallCountdownTimer = null;
 
 function formatUpdateError(error) {
   let raw = '';
@@ -1174,21 +1175,22 @@ function applyUpdateUiState(state, version) {
     el.btnDownloadUpdate.textContent = state === 'error' ? 'Retry Download' : 'Download Update';
   }
   if (el.btnRestartUpdate) {
-    el.btnRestartUpdate.classList.toggle('hidden', state !== 'ready');
+    el.btnRestartUpdate.classList.toggle('hidden', state !== 'ready' && state !== 'installing');
     el.btnRestartUpdate.disabled = state === 'installing';
+    el.btnRestartUpdate.textContent = 'Restart Now';
   }
 
   if (state === 'available') {
-    setUpdateBannerVisible(true, `Update available${verLabel}`, 'Step 1: download the update. Step 2: restart to install.');
+    setUpdateBannerVisible(true, `Update available${verLabel}`, 'Downloading automatically — watch the progress bar below.');
     hideUpdateProgress();
-    setPopupUpdateStatus(`Update${verLabel} available — download first`);
+    setPopupUpdateStatus(`Update${verLabel} found — auto-downloading…`);
   } else if (state === 'downloading') {
-    setUpdateBannerVisible(true, `Downloading update${verLabel}`, 'Do not close the app until the download finishes.');
+    setUpdateBannerVisible(true, `Downloading update${verLabel}`, 'Auto-update in progress — do not close the app.');
     setPopupUpdateStatus(`Downloading update${verLabel}…`);
   } else if (state === 'ready') {
-    setUpdateBannerVisible(true, `Update ready${verLabel}`, 'Download complete. Click Restart to Install when you are ready.');
+    setUpdateBannerVisible(true, `Update ready${verLabel}`, 'Download complete — restarting automatically in ~15 seconds.');
     hideUpdateProgress();
-    setPopupUpdateStatus(`Update${verLabel} ready — restart to install`);
+    setPopupUpdateStatus(`Update${verLabel} ready — auto-restart soon`);
   } else if (state === 'installing') {
     setUpdateBannerVisible(true, 'Installing update', 'The app will close and reopen shortly…');
     setPopupUpdateStatus('Installing update…');
@@ -1279,6 +1281,31 @@ window.kt.onUpdateDownloadProgress((info) => {
 window.kt.onUpdateDownloaded((info) => {
   applyUpdateUiState('ready', info?.version || pendingUpdateVersion);
 });
+window.kt.onUpdateAutoInstallScheduled((info) => {
+  const ver = info?.version || pendingUpdateVersion;
+  applyUpdateUiState('ready', ver);
+  let remaining = Math.max(1, Math.ceil((info?.delayMs || 15000) / 1000));
+  const tick = () => {
+    setUpdateBannerVisible(
+      true,
+      `Update ready v${ver || pendingUpdateVersion}`,
+      `Restarting automatically in ${remaining}s… (or click Restart Now)`
+    );
+    setPopupUpdateStatus(`Auto-restart in ${remaining}s`);
+  };
+  tick();
+  if (autoInstallCountdownTimer) clearInterval(autoInstallCountdownTimer);
+  autoInstallCountdownTimer = setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0) {
+      clearInterval(autoInstallCountdownTimer);
+      autoInstallCountdownTimer = null;
+      applyUpdateUiState('installing', ver);
+      return;
+    }
+    tick();
+  }, 1000);
+});
 window.kt.onUpdateError((error) => {
   const msg = formatUpdateError(error);
   console.error('[update] error:', error);
@@ -1301,7 +1328,7 @@ window.kt.onUpdateError((error) => {
 // node.
 
 const POPUP_MENU_BUILT = { value: false };
-const DEFAULT_UPDATE_STATUS = 'Check for updates in Menu';
+const DEFAULT_UPDATE_STATUS = 'Auto-updates every minute';
 
 function buildPopupMenu() {
   if (!el.popupMenu || POPUP_MENU_BUILT.value) return;

@@ -147,17 +147,20 @@ function broadcastUpdate(channel, payload) {
   } catch (_) {}
 }
 
-// ── electron-updater wiring (two-step: download, then restart) ─────────────
-// Step 1: check-for-updates / download-update — user-initiated download with
-//         progress bar in the app.
-// Step 2: quit-and-install-update — only runs after the installer is on disk.
+// ── electron-updater wiring (auto two-step: download → restart) ────────────
+// Checks every minute. When an update exists: auto-download (progress bar),
+// then auto-restart after a short grace period. Manual buttons still work.
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = false;
+const UPDATE_CHECK_INTERVAL_MS = 60 * 1000;
+const AUTO_INSTALL_DELAY_MS = 15000;
 let updateDownloadedInfo = null;
 let downloadedInstallerPath = null;
 let pendingRemoteVersion = null;
 let updateDownloadInProgress = false;
 let updateDownloadUsedFallback = false;
+let autoInstallTimer = null;
+let autoUpdatePipelineRunning = false;
 // Set while tearing down to install. Tray close handlers must not block quit.
 let isQuittingForUpdate = false;
 
@@ -181,6 +184,7 @@ autoUpdater.on('update-downloaded', (info) => {
   updateDownloadInProgress = false;
   appendLog(`✅ Update downloaded: ${info?.version || 'latest'}${downloadedInstallerPath ? ` → ${path.basename(downloadedInstallerPath)}` : ''}`, 'success');
   broadcastUpdate('update-downloaded', { version: info?.version, release: info });
+  scheduleAutoInstall();
 });
 autoUpdater.on('error', (err) => {
   if (!updateDownloadInProgress) {
@@ -226,6 +230,7 @@ async function fallbackDirectDownload(version) {
   updateDownloadInProgress = false;
   broadcastUpdate('update-downloaded', { version: ver, fallback: true });
   appendLog(`✅ Update downloaded (direct): ${fileName}`, 'success');
+  scheduleAutoInstall();
   return { ok: true, version: ver, fallback: true };
 }
 
@@ -251,6 +256,10 @@ function getInstallerProcessPrefix() {
   return 'KnightTrader-Blofin-Setup';
 }
 
+function psEscape(value) {
+  return String(value).replace(/'/g, "''");
+}
+
 function spawnRelaunchSentinel() {
   try {
     const exePath = process.execPath;
@@ -258,67 +267,66 @@ function spawnRelaunchSentinel() {
     const scriptPath = path.join(os.tmpdir(), 'knighttrader-relaunch.ps1');
     const logPath = path.join(os.tmpdir(), 'knighttrader-relaunch.log');
     const setupPrefix = getInstallerProcessPrefix();
-    const script = [
-      "$ErrorActionPreference = 'Continue'",
-      `$log = ${psSingleQuoted(logPath)}`,
-      `$oldPid = ${Number(process.pid) || 0}`,
-      `$exe = ${psSingleQuoted(exePath)}`,
-      `$setupPrefix = ${psSingleQuoted(setupPrefix)}`,
-      'function Log([string]$m) {',
-      "  Add-Content -LiteralPath $log -Value ((Get-Date -Format o) + ' ' + $m)",
-      '}',
-      'function InstallerRunning {',
-      '  $hit = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {',
-      '    $_.ProcessName -like ($setupPrefix + ''*'') -or $_.ProcessName -like ''KnightTrader*Blofin*Setup*''',
-      '  })',
-      '  return $hit.Length -gt 0',
-      '}',
-      "Log 'sentinel-start'",
-      '$deadline = (Get-Date).AddSeconds(180)',
-      'while ((Get-Date) -lt $deadline) {',
-      '  if (-not (Get-Process -Id $oldPid -ErrorAction SilentlyContinue)) { break }',
-      '  Start-Sleep -Milliseconds 400',
-      '}',
-      "Log 'old-pid-gone'",
-      'Start-Sleep -Seconds 2',
-      '$seen = $false',
-      '$appearBy = (Get-Date).AddSeconds(90)',
-      'while ((Get-Date) -lt $appearBy) {',
-      '  if (InstallerRunning) { $seen = $true; break }',
-      '  Start-Sleep -Milliseconds 500',
-      '}',
-      "Log ('installer-seen=' + $seen)",
-      'if ($seen) {',
-      '  $doneBy = (Get-Date).AddMinutes(6)',
-      '  while ((Get-Date) -lt $doneBy) {',
-      '    if (-not (InstallerRunning)) { break }',
-      '    Start-Sleep -Seconds 1',
-      '  }',
-      "  Log 'installer-gone'",
-      '} else {',
-      '  Start-Sleep -Seconds 6',
-      '}',
-      'Start-Sleep -Seconds 2',
-      'for ($i = 0; $i -lt 20; $i++) {',
-      '  if (InstallerRunning) {',
-      '    Start-Sleep -Seconds 2',
-      '    continue',
-      '  }',
-      '  try {',
-      '    $p = Start-Process -FilePath $exe -ArgumentList ''--updated'' -PassThru -ErrorAction Stop',
-      '    Start-Sleep -Seconds 5',
-      '    if ($p -and -not $p.HasExited) {',
-      "      Log ('running pid=' + $p.Id)",
-      '      exit 0',
-      '    }',
-      "    Log ('exited-fast attempt=' + $i)",
-      '  } catch {',
-      "    Log ('start-failed attempt=' + $i + ' ' + $_.Exception.Message)",
-      '  }',
-      '  Start-Sleep -Seconds 3',
-      '}',
-      "Log 'gave-up'",
-    ].join('\r\n');
+    // Write the script as one template literal — never embed PowerShell
+    // quotes inside JS single-quoted strings ('' breaks JS parsing).
+    const script = `$ErrorActionPreference = 'Continue'
+$log = '${psEscape(logPath)}'
+$oldPid = ${Number(process.pid) || 0}
+$exe = '${psEscape(exePath)}'
+$setupPrefix = '${psEscape(setupPrefix)}'
+function Log([string]$m) {
+  Add-Content -LiteralPath $log -Value ((Get-Date -Format o) + ' ' + $m)
+}
+function InstallerRunning {
+  $pat = $setupPrefix + '*'
+  return @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like $pat }).Length -gt 0
+}
+Log 'sentinel-start'
+$deadline = (Get-Date).AddSeconds(180)
+while ((Get-Date) -lt $deadline) {
+  if (-not (Get-Process -Id $oldPid -ErrorAction SilentlyContinue)) { break }
+  Start-Sleep -Milliseconds 400
+}
+Log 'old-pid-gone'
+Start-Sleep -Seconds 2
+$seen = $false
+$appearBy = (Get-Date).AddSeconds(90)
+while ((Get-Date) -lt $appearBy) {
+  if (InstallerRunning) { $seen = $true; break }
+  Start-Sleep -Milliseconds 500
+}
+Log ('installer-seen=' + $seen)
+if ($seen) {
+  $doneBy = (Get-Date).AddMinutes(6)
+  while ((Get-Date) -lt $doneBy) {
+    if (-not (InstallerRunning)) { break }
+    Start-Sleep -Seconds 1
+  }
+  Log 'installer-gone'
+} else {
+  Start-Sleep -Seconds 6
+}
+Start-Sleep -Seconds 2
+for ($i = 0; $i -lt 20; $i++) {
+  if (InstallerRunning) {
+    Start-Sleep -Seconds 2
+    continue
+  }
+  try {
+    $p = Start-Process -FilePath $exe -ArgumentList '--updated' -PassThru -ErrorAction Stop
+    Start-Sleep -Seconds 5
+    if ($p -and -not $p.HasExited) {
+      Log ('running pid=' + $p.Id)
+      exit 0
+    }
+    Log ('exited-fast attempt=' + $i)
+  } catch {
+    Log ('start-failed attempt=' + $i + ' ' + $_.Exception.Message)
+  }
+  Start-Sleep -Seconds 3
+}
+Log 'gave-up'
+`;
     fs.writeFileSync(scriptPath, script, 'utf8');
     // `start` ShellExecutes a new process outside Electron's job object, so
     // it survives app.quit()/app.exit().
@@ -423,6 +431,55 @@ async function waitForDownloadedUpdate(timeoutMs = 180000) {
   return !!(updateDownloadedInfo && installerFileExists());
 }
 
+function scheduleAutoInstall(delayMs = AUTO_INSTALL_DELAY_MS) {
+  if (updateInstallInProgress || !updateDownloadedInfo || !installerFileExists()) return;
+  if (autoInstallTimer) {
+    clearTimeout(autoInstallTimer);
+    autoInstallTimer = null;
+  }
+  appendLog(`⏱ Auto-restart in ${Math.round(delayMs / 1000)}s to install update`, 'info');
+  broadcastUpdate('update-auto-install-scheduled', {
+    version: updateDownloadedInfo?.version || pendingRemoteVersion,
+    delayMs,
+  });
+  autoInstallTimer = setTimeout(async () => {
+    autoInstallTimer = null;
+    if (!installerFileExists()) {
+      runAutoUpdatePipeline().catch(() => {});
+      return;
+    }
+    appendLog('🔄 Auto-restarting to install update…', 'success');
+    await beginSilentUpdateInstall();
+  }, delayMs).unref?.();
+}
+
+async function runAutoUpdatePipeline() {
+  if (!app.isPackaged || updateInstallInProgress || updateDownloadInProgress || autoUpdatePipelineRunning) {
+    return;
+  }
+  const current = app.getVersion();
+  const remote = pendingRemoteVersion || await resolveLatestRemoteVersion();
+  if (!remote || compareVersions(current, remote) >= 0) return;
+
+  pendingRemoteVersion = remote;
+  configureGenericUpdateFeed(remote);
+
+  if (updateDownloadedInfo && installerFileExists()) {
+    scheduleAutoInstall();
+    return;
+  }
+
+  autoUpdatePipelineRunning = true;
+  try {
+    appendLog(`🔄 Auto-update: downloading v${remote}…`, 'info');
+    await downloadUpdateFromMain();
+  } catch (err) {
+    appendLog(`⚠ Auto-update download failed: ${err?.message || err}`, 'warn');
+  } finally {
+    autoUpdatePipelineRunning = false;
+  }
+}
+
 async function checkForUpdatesFromMain() {
   const current = app.getVersion();
   if (!app.isPackaged) {
@@ -438,7 +495,8 @@ async function checkForUpdatesFromMain() {
     pendingRemoteVersion = remote;
     configureGenericUpdateFeed(remote);
     appendLog(`⬆ Update available: ${remote} (installed ${current})`, 'success');
-    broadcastUpdate('update-available', { version: remote });
+    broadcastUpdate('update-available', { version: remote, auto: true });
+    runAutoUpdatePipeline().catch(() => {});
   } else {
     pendingRemoteVersion = null;
     appendLog(`✅ Up to date: ${current}`, 'info');
@@ -515,6 +573,10 @@ async function downloadUpdateFromMain() {
 async function quitAndInstallFromMain() {
   if (!app.isPackaged) {
     return { ok: false, error: 'Updates install only in the packaged app' };
+  }
+  if (autoInstallTimer) {
+    clearTimeout(autoInstallTimer);
+    autoInstallTimer = null;
   }
   if (!updateDownloadedInfo || !installerFileExists()) {
     return { ok: false, error: 'Download the update first, then click Restart to Install.' };
@@ -3486,11 +3548,12 @@ app.whenReady().then(async () => {
       broadcastUpdate('update-downloaded', {
         version: updateDownloadedInfo.version || app.getVersion(),
       });
+      scheduleAutoInstall(5000);
     }
   }).catch(() => {});
 
-  // Notify when a new release publishes — check only, never auto-download.
-  setInterval(() => { checkForUpdatesFromMain().catch(() => {}); }, 30 * 60 * 1000).unref?.();
+  // Check every minute — auto-download + auto-restart when a release is available.
+  setInterval(() => { checkForUpdatesFromMain().catch(() => {}); }, UPDATE_CHECK_INTERVAL_MS).unref?.();
 
   // Forced/critical update kill-switch: check the public manifest on
   // startup and every 5 minutes so a critical flag flipped while the app

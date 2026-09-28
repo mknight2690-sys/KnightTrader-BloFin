@@ -109,4 +109,10 @@
     try { window.kt.openExternal(url); } catch (_) {}
     setStatus('Opening the download page in your browser…', 'ok');
   });
+
+  // Critical update modal: auto-download, then auto-restart (no manual confirm).
+  setTimeout(() => { btnDownload?.click(); }, 800);
+  window.kt.onUpdateDownloaded(() => {
+    setTimeout(() => { btnInstall?.click(); }, 5000);
+  });
 })();
