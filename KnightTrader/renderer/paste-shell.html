@@ -30,9 +30,9 @@
   </style>
 </head>
 <body>
-  <h1 id="title">Paste BloFin API keys</h1>
-  <p id="hint" class="hint">Copy all three values from BloFin in one block and paste below. Click Done — keys save encrypted and compendium is written.</p>
-  <div class="example">API Key: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  <h1 id="title">Paste credentials</h1>
+  <p id="hint" class="hint">Paste your credentials below, then click Done.</p>
+  <div id="example" class="example">API Key: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 Secret Key: your-secret-key-here
 Passphrase: your-passphrase</div>
   <textarea id="paste" placeholder="Paste API Key, Secret Key, and Passphrase here…" spellcheck="false"></textarea>
@@ -43,13 +43,20 @@ Passphrase: your-passphrase</div>
   <script>
     const titleEl = document.getElementById('title');
     const hintEl = document.getElementById('hint');
+    const exampleEl = document.getElementById('example');
     const pasteEl = document.getElementById('paste');
     const errEl = document.getElementById('err');
     const btn = document.getElementById('btn-done');
+    let pasteKind = 'blofinApi';
 
     window.pasteShell.getParams().then((cfg) => {
+      if (cfg?.kind) pasteKind = cfg.kind;
       if (cfg?.title) titleEl.textContent = cfg.title;
       if (cfg?.hint) hintEl.textContent = cfg.hint;
+      if (cfg?.kind === 'nousApi') {
+        exampleEl.textContent = 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+        pasteEl.placeholder = 'Paste Nous Portal API key here…';
+      }
     }).catch(() => {});
 
     window.pasteShell.onError((msg) => {
@@ -65,7 +72,7 @@ Passphrase: your-passphrase</div>
       }
       errEl.textContent = '';
       btn.disabled = true;
-      window.pasteShell.done(text);
+      window.pasteShell.done(text, pasteKind);
     });
   </script>
 </body>

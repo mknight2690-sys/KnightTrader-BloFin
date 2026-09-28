@@ -134,7 +134,12 @@
       <section id="tab-howto" class="tab-panel active">
         <div class="panel-header">
           <h1>How-To</h1>
-          <p class="panel-sub">Do these steps in order. This guide is written for someone who has never done this before.</p>
+          <p class="panel-sub">Most of this guide runs automatically — popup windows walk you through each step once.</p>
+        </div>
+        <div class="howto-automation-callout">
+          <div class="howto-automation-title">What KnightTrader automates for you</div>
+          <p>The popup walkthrough covers VPN setup, Proton and BloFin accounts, API keys, Coinbase on-ramp, USDT deposit, Hermes install, and cron configuration — work that normally takes <strong>hours</strong> of tab-hopping and trial-and-error. Most traders figure this out alone, mid-stream, with real money on the line. Here you get a guided path: a few one-time popups, click <strong>Done</strong> after each, and you are set up for automated trading instead of being dropped in the deep end.</p>
+          <p class="howto-automation-note">First launch takes a few minutes. You only do it once — returning visits auto-connect VPN and Hermes and take you straight to Trading.</p>
         </div>
         <blockquote class="hero-quote">
           <p>“Take it slow, follow the How-To tab, and you’ll be fine. Every button clicked once in the first go around.</p>
@@ -823,10 +828,14 @@
               <button type="button" id="btn-signup-blofin" class="btn-secondary">Create BloFin Account ↗</button>
               <button type="button" id="btn-signup-blofin-login" class="btn-secondary">BloFin Login ↗</button>
               <button type="button" id="btn-signup-blofin-api" class="btn-secondary">BloFin API Keys ↗</button>
-              <button type="button" id="btn-paste-blofin-api" class="btn-primary">Paste API Keys ↗</button>
+              <button type="button" id="btn-paste-blofin-api" class="btn-primary">Paste BloFin API Keys ↗</button>
+              <button type="button" id="btn-paste-nous-api" class="btn-secondary">Paste Nous API Key ↗</button>
+              <button type="button" id="btn-signup-coinbase" class="btn-secondary">Coinbase Signup ↗</button>
+              <button type="button" id="btn-signup-coinbase-buy" class="btn-secondary">Buy USDT ↗</button>
+              <button type="button" id="btn-signup-blofin-deposit" class="btn-secondary">BloFin Deposit ↗</button>
               <button type="button" id="btn-signup-proton-downloads" class="btn-secondary">Proton VPN Configs ↗</button>
             </div>
-            <p class="vpn-onboard-note">Full flow: <strong>@proton.me</strong> → Proton Mail verify → BloFin signup → BloFin login → <strong>API Management</strong> popup → <strong>Paste API Keys</strong> popup (one paste, Done saves everything). Click <strong>Done — continue</strong> after each browser popup.</p>
+            <p class="vpn-onboard-note">Use <strong>Re-run setup wizard</strong> anytime — the app detects what is already done and only walks you through missing steps.</p>
             <div id="vpn-status" class="vpn-onboard-log"></div>
           </div>
         </div>
@@ -1223,7 +1232,44 @@
 
     </main>
 
-    <!-- First-run wizard (shown once; user completes CAPTCHA/signup in popup windows) -->
+    <!-- One-time disclaimer before guided setup -->
+    <div id="onboard-disclaimer-overlay" class="first-run-overlay hidden" role="dialog" aria-modal="true">
+      <div class="first-run-modal">
+        <div class="first-run-badge">One-time setup</div>
+        <h2>Guided setup — a few minutes, once</h2>
+        <p class="first-run-lead">KnightTrader will open popup windows for each step (VPN, accounts, API keys, Coinbase, deposits). Click <strong>Done</strong> in each popup when finished. This takes a few minutes the first time — you only do it once.</p>
+        <p class="first-run-lead">If you already completed setup, we detect saved credentials and skip this automatically.</p>
+        <div class="first-run-actions">
+          <button type="button" id="onboard-disclaimer-start" class="btn-primary">Start guided setup</button>
+          <button type="button" id="onboard-disclaimer-skip" class="btn-ghost-sm">Skip — I'm already set up</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Missing steps prompt -->
+    <div id="onboard-missing-overlay" class="first-run-overlay hidden" role="dialog" aria-modal="true">
+      <div class="first-run-modal">
+        <div class="first-run-badge">Resume setup</div>
+        <h2>Still needed for full automation</h2>
+        <p class="first-run-lead">We detected credentials on this PC but these steps are not marked complete yet:</p>
+        <ul id="onboard-missing-list" class="onboard-missing-list"></ul>
+        <div class="first-run-actions">
+          <button type="button" id="onboard-missing-continue" class="btn-primary">Continue popup walkthrough</button>
+          <button type="button" id="onboard-missing-later" class="btn-ghost-sm">Later</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Returning user startup wait -->
+    <div id="returning-user-overlay" class="first-run-overlay hidden" role="status" aria-live="polite">
+      <div class="first-run-modal">
+        <div class="first-run-badge">Welcome back</div>
+        <h2>Preparing KnightTrader BloFin…</h2>
+        <p class="first-run-lead">Connecting VPN if needed, starting Hermes dashboard + gateway, and loading your trading desk. This may take a minute after an update.</p>
+      </div>
+    </div>
+
+    <!-- Walkthrough step modal -->
     <div id="first-run-overlay" class="first-run-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="first-run-title">
       <div class="first-run-modal">
         <div class="first-run-badge">First-time setup</div>
@@ -1261,7 +1307,7 @@
 
   <script src="trading-system.js"></script>
   <script src="credentials.js"></script>
-  <script src="vpn-onboarding.js"></script>
+  <script src="onboarding-walkthrough.js"></script>
   <script src="chat.js"></script>
   <script src="app.js"></script>
 </body>

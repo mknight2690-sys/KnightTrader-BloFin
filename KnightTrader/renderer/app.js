@@ -15,6 +15,7 @@ let cachedAppVersion = '';
 let startupAutoSwitchArmed = true;
 let didStartupAutoSwitch = false;
 let hasBlofinCreds = false;
+let forceTradingTabOnReady = false;
 
 // ── DOM shortcuts ─────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
@@ -153,6 +154,33 @@ async function init() {
     if (el.sidebarVersion) el.sidebarVersion.textContent = label;
     if (el.aboutAppVersion) el.aboutAppVersion.textContent = `KnightTrader BloFin ${label}`;
   } catch (e) {}
+
+  // Returning users: VPN + Hermes + Trading tab + voice welcome
+  window.runReturningUserStartup = async function runReturningUserStartup() {
+    forceTradingTabOnReady = true;
+    startupAutoSwitchArmed = true;
+    didStartupAutoSwitch = false;
+    const overlay = document.getElementById('returning-user-overlay');
+    overlay?.classList.remove('hidden');
+    try { window.kt.announceVoice('Welcome back to Knight Trader Blo Fin.'); } catch (_) {}
+    appendLogLine({ ts: Date.now(), type: 'info', msg: '⏳ Returning user startup — VPN check + Hermes…' });
+    try {
+      const loc = await window.kt.vpnOnboardingCheck();
+      if (!loc?.allowed) {
+        await window.kt.vpnOnboardingAutoSetup({ preferredCountry: 'random' });
+      }
+    } catch (_) {}
+    if (hermesInstalled && !dashboardRunning && !dashboardStartInFlight) {
+      startHermesDashboardUi();
+    }
+    setTimeout(() => {
+      if (currentTab === 'hermes' || forceTradingTabOnReady) {
+        overlay?.classList.add('hidden');
+        try { switchTab('trading'); } catch (_) {}
+        forceTradingTabOnReady = false;
+      }
+    }, 12000);
+  };
 
   // Load creds
   try {
@@ -309,7 +337,9 @@ function maybeStartupAutoSwitch() {
   setTimeout(() => {
     // Don't override a tab the user picked themselves during the wait.
     if (currentTab !== 'hermes') return;
-    const targetTab = (hermesInstalled && hasBlofinCreds) ? 'trading' : 'howto';
+    document.getElementById('returning-user-overlay')?.classList.add('hidden');
+    const targetTab = forceTradingTabOnReady || (hermesInstalled && hasBlofinCreds) ? 'trading' : 'howto';
+    forceTradingTabOnReady = false;
     try { switchTab(targetTab); } catch (_) {}
   }, 1500);
 }

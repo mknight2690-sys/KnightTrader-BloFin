@@ -5,6 +5,11 @@ const { pathToFileURL } = require('url');
 const { BlohunterBridge } = require('./blohunter-bridge');
 const vpn = require('./vpn');
 const { VpnOnboarding } = require('./lib/vpn-onboarding');
+const {
+  evaluateOnboarding,
+  markStepComplete,
+  ONBOARDING_STEPS,
+} = require('./lib/onboarding-steps');
 const { spawn, execFileSync, execSync } = require('child_process');
 const crypto = require('crypto');
 const http = require('http');
@@ -835,7 +840,15 @@ const DEFAULTS = {
   proton: { email: '', password: '' },
   nous:   { apiKey: '', model: DEFAULT_NOUS_MODEL },
   settings: { notifySounds: true },
-  onboarding: { firstRunComplete: false, vpnVerified: false },
+  onboarding: {
+    firstRunComplete: false,
+    vpnVerified: false,
+    disclaimerSeen: false,
+    setupComplete: false,
+    locationChecked: false,
+    cronConfigured: false,
+    stepsCompleted: {},
+  },
 };
 
 const LEGACY_NOUS_MODELS = {
@@ -872,8 +885,82 @@ function migrateStoreData(raw) {
   delete merged.nouse;
   merged.proton = { ...DEFAULTS.proton, ...(merged.proton || {}) };
   merged.blofinAccount = { ...DEFAULTS.blofinAccount, ...(merged.blofinAccount || {}) };
-  merged.onboarding = { ...DEFAULTS.onboarding, ...(merged.onboarding || {}) };
+  merged.onboarding = {
+    ...DEFAULTS.onboarding,
+    ...(merged.onboarding || {}),
+    stepsCompleted: {
+      ...DEFAULTS.onboarding.stepsCompleted,
+      ...(merged.onboarding?.stepsCompleted || {}),
+    },
+  };
+  if (hasBlofinApi(merged) && hasNousApi(merged)) {
+    merged.onboarding.setupComplete = true;
+    merged.onboarding.firstRunComplete = true;
+    merged.onboarding.disclaimerSeen = true;
+  }
   return merged;
+}
+
+function hasBlofinApi(creds) {
+  return !!(String(creds?.blofin?.apiKey || '').trim()
+    && String(creds?.blofin?.secretKey || '').trim()
+    && String(creds?.blofin?.passphrase || '').trim());
+}
+
+function hasNousApi(creds) {
+  return !!String(creds?.nous?.apiKey || '').trim();
+}
+
+async function getOnboardingContext() {
+  const hermes = checkHermesInstalled();
+  let locationAllowed = storeData.onboarding?.locationAllowed;
+  try {
+    const loc = await getVpnOnboarding().checkLocation();
+    locationAllowed = !!loc?.allowed;
+    if (locationAllowed) {
+      storeData.onboarding.locationAllowed = true;
+    }
+  } catch (_) {}
+  let gatewayRunning = false;
+  try {
+    const st = await getDashboardStatus();
+    gatewayRunning = !!st?.gatewayRunning;
+  } catch (_) {}
+  return {
+    hermesInstalled: !!hermes?.installed,
+    dashboardRunning: gatewayRunning,
+    locationAllowed: locationAllowed ?? null,
+    platform: process.platform,
+  };
+}
+
+function finalizeOnboardingIfDone() {
+  const ctx = {
+    hermesInstalled: !!checkHermesInstalled()?.installed,
+    dashboardRunning: dashboardReady,
+    locationAllowed: storeData.onboarding?.locationAllowed,
+    platform: process.platform,
+  };
+  const evaluation = evaluateOnboarding(storeData, storeData.onboarding, ctx);
+  if (evaluation.missing.length === 0 || (evaluation.tradingReady && evaluation.complete.length >= 20)) {
+    storeData.onboarding.setupComplete = true;
+    storeData.onboarding.firstRunComplete = true;
+  }
+  return evaluation;
+}
+
+function markOnboardingStepId(stepId) {
+  if (!stepId) return finalizeOnboardingIfDone();
+  storeData.onboarding = markStepComplete(storeData.onboarding, stepId);
+  if (stepId === 'blofinApiPaste' && hasBlofinApi(storeData)) {
+    storeData.onboarding.stepsCompleted.blofinApiCreate = Date.now();
+  }
+  if (stepId === 'nousApiPaste' && hasNousApi(storeData)) {
+    storeData.onboarding.stepsCompleted.nousApiCreate = Date.now();
+    storeData.onboarding.stepsCompleted.nousCredits = Date.now();
+  }
+  saveStore(storeData);
+  return finalizeOnboardingIfDone();
 }
 
 function getBlofinBaseUrl() {
@@ -926,6 +1013,18 @@ const SIGNUP_URLS = {
   blofin: 'https://blofin.com/register',
   blofinLogin: 'https://blofin.com/login',
   blofinApi: 'https://blofin.com/account/api',
+  blofinDeposit: 'https://blofin.com/asset/deposit',
+  blofinTransfer: 'https://blofin.com/asset/transfer',
+  blofinAssets: 'https://blofin.com/asset',
+  coinbase: 'https://www.coinbase.com/signup',
+  coinbaseLogin: 'https://www.coinbase.com/login',
+  coinbasePayments: 'https://www.coinbase.com/settings/payment_methods',
+  coinbaseBuy: 'https://www.coinbase.com/trade/USDT-USD',
+  coinbaseSend: 'https://www.coinbase.com/assets/USDT',
+  nousPortal: 'https://portal.nousresearch.com/',
+  nousSubscription: 'https://portal.nousresearch.com/manage-subscription',
+  nousBilling: 'https://portal.nousresearch.com/billing',
+  nousApiKeys: 'https://portal.nousresearch.com/api-keys',
 };
 const SIGNUP_TITLES = {
   proton: 'Create Proton account — pick your @proton.me email',
@@ -937,6 +1036,18 @@ const SIGNUP_TITLES = {
   blofin: 'Create BloFin account — use your Proton email',
   blofinLogin: 'Sign in to BloFin',
   blofinApi: 'Create BloFin API keys',
+  blofinDeposit: 'BloFin — get USDT deposit address',
+  blofinTransfer: 'BloFin — transfer USDT to USDT-M futures',
+  blofinAssets: 'BloFin wallet & assets',
+  coinbase: 'Create Coinbase account',
+  coinbaseLogin: 'Sign in to Coinbase',
+  coinbasePayments: 'Add debit card on Coinbase',
+  coinbaseBuy: 'Buy USDT on Coinbase',
+  coinbaseSend: 'Send USDT from Coinbase to BloFin',
+  nousPortal: 'Nous Portal — create account',
+  nousSubscription: 'Nous Portal — subscription & free plan',
+  nousBilling: 'Nous Portal — add credits ($5+)',
+  nousApiKeys: 'Nous Portal — create API key',
 };
 const SIGNUP_HINTS = {
   proton: 'Choose a username — that becomes your free @proton.me address (used for BloFin). Complete CAPTCHA, then Done.',
@@ -947,7 +1058,37 @@ const SIGNUP_HINTS = {
   protonvpn: 'Create free VPN account if separate from Proton Mail. Then Done.',
   blofinLogin: 'Sign in with your BloFin account email and password. Then Done.',
   blofinApi: 'Click Create API key → name it KT Hermes → enable Read, Compendium, and Trade → set a Passphrase → copy all three values, then open the paste window from the wizard. Done when keys are created.',
+  blofinDeposit: 'Select USDT, pick a network (match Coinbase later), copy deposit address + memo if shown. Done.',
+  blofinTransfer: 'Transfer USDT from Funding/Spot → Futures (USDT-M). Done when balance shows in futures wallet.',
+  blofinAssets: 'Check your USDT balance and wallets. Done.',
+  coinbase: 'Sign up, verify email and phone, complete ID verification if prompted. Done.',
+  coinbaseLogin: 'Sign in to Coinbase. Done.',
+  coinbasePayments: 'Settings → Payment methods → Add debit card → verify. Done.',
+  coinbaseBuy: 'Buy USDT (not USDC) with your debit card — start small ($25–50). Done when USDT shows in portfolio.',
+  coinbaseSend: 'Send USDT to your BloFin address — match network exactly. Done when send is submitted.',
+  nousPortal: 'Create account or sign in at Nous Portal. Done.',
+  nousSubscription: 'Choose Free $0 plan if needed. Done.',
+  nousBilling: 'Add at least $5 in credits via Stripe top-up. Done when balance shows $5+.',
+  nousApiKeys: 'Create API key named KT Hermes — copy the full key. Done.',
   protonMailLogin: 'Sign in to Proton Mail. Then Done.',
+};
+
+const SIGNUP_ONBOARDING_STEP = {
+  proton: 'protonAccount',
+  protonMail: 'protonMail',
+  blofin: 'blofinAccount',
+  blofinLogin: 'blofinLogin',
+  blofinApi: 'blofinApiCreate',
+  coinbase: 'coinbaseSignup',
+  coinbasePayments: 'coinbaseCard',
+  coinbaseBuy: 'coinbaseBuy',
+  coinbaseSend: 'coinbaseSend',
+  blofinDeposit: 'blofinDeposit',
+  blofinTransfer: 'blofinTransfer',
+  nousPortal: 'nousSignup',
+  nousSubscription: 'nousSignup',
+  nousBilling: 'nousCredits',
+  nousApiKeys: 'nousApiCreate',
 };
 
 function openSignupWindow(type) {
@@ -1033,15 +1174,52 @@ async function saveBlofinPaste(text) {
   } catch (e) {
     appendLog(`⚠ Hermes sync on paste: ${e.message}`, 'warn');
   }
-  return { ok: true, compendiumPath, blofin: { apiKey, secretKey, passphrase } };
+  markOnboardingStepId('blofinApiPaste');
+  markOnboardingStepId('compendium');
+  return { ok: true, compendiumPath, blofin: { apiKey, secretKey, passphrase }, kind: 'blofinApi' };
+}
+
+async function saveNousPaste(text) {
+  const parsed = parseCredentialFileContent(String(text || ''));
+  let apiKey = String(parsed.nous?.apiKey || '').trim();
+  if (!apiKey) {
+    const raw = String(text || '').trim();
+    const line = raw.split(/\r?\n/).map((l) => l.trim()).find((l) => l && !l.startsWith('#'));
+    if (line) {
+      const m = line.match(/^(?:portal\s*)?(?:api\s*)?key[^:=]*[:=]\s*(.+)$/i);
+      apiKey = m ? m[1].trim() : line;
+    }
+  }
+  if (!apiKey) {
+    return { ok: false, error: 'Paste your Nous Portal API key (one line is fine).' };
+  }
+  storeData.nous = { ...storeData.nous, apiKey, model: storeData.nous?.model || DEFAULT_NOUS_MODEL };
+  saveStore(storeData);
+  try {
+    let token = null;
+    if (await probeDashboardPort()) {
+      token = await fetchDashboardSessionToken().catch(() => null);
+    }
+    await syncHermesCredentials(token, { restartGateway: !!token });
+  } catch (e) {
+    appendLog(`⚠ Hermes sync on Nous paste: ${e.message}`, 'warn');
+  }
+  markOnboardingStepId('nousApiPaste');
+  return { ok: true, kind: 'nousApi', nous: { apiKey } };
 }
 
 function openPasteWindow(kind = 'blofinApi') {
-  pendingPasteContext = {
-    kind,
-    title: 'Paste BloFin API keys',
-    hint: 'Copy API Key, Secret Key, and Passphrase from BloFin in one block. Click Done — saved encrypted + compendium written.',
-  };
+  pendingPasteContext = kind === 'nousApi'
+    ? {
+      kind,
+      title: 'Paste Nous Portal API key',
+      hint: 'Paste the full API key from portal.nousresearch.com (one line). Click Done — saved encrypted.',
+    }
+    : {
+      kind,
+      title: 'Paste BloFin API keys',
+      hint: 'Copy API Key, Secret Key, and Passphrase from BloFin in one block. Click Done — saved encrypted + compendium written.',
+    };
   const shellPath = path.join(__dirname, 'renderer', 'paste-shell.html');
   if (pasteWindow && !pasteWindow.isDestroyed()) {
     pasteWindow.focus();
@@ -3301,16 +3479,28 @@ function registerIPC() {
   ipcMain.handle('get-signup-params', () => pendingSignupContext);
   ipcMain.on('signup-done', (_e, payload) => {
     const type = payload?.type || pendingSignupContext.type;
+    const stepId = SIGNUP_ONBOARDING_STEP[type];
+    if (stepId) markOnboardingStepId(stepId);
     try {
       if (signupWindow && !signupWindow.isDestroyed()) signupWindow.close();
     } catch (_) {}
-    notifySignupStepDone(type);
+    notifySignupStepDone({ type, stepId });
   });
   ipcMain.handle('get-paste-params', () => pendingPasteContext);
   ipcMain.handle('open-blofin-paste', () => { openPasteWindow('blofinApi'); return { ok: true }; });
+  ipcMain.handle('open-nous-paste', () => { openPasteWindow('nousApi'); return { ok: true }; });
   ipcMain.handle('parse-and-save-blofin-paste', (_e, text) => saveBlofinPaste(text));
+  ipcMain.handle('parse-and-save-nous-paste', (_e, text) => saveNousPaste(text));
+  ipcMain.handle('get-onboarding-checklist', async () => {
+    const ctx = await getOnboardingContext();
+    return evaluateOnboarding(storeData, storeData.onboarding, ctx);
+  });
+  ipcMain.handle('mark-onboarding-step', (_e, stepId) => markOnboardingStepId(stepId));
   ipcMain.on('paste-done', async (_e, payload) => {
-    const result = await saveBlofinPaste(payload?.text || '');
+    const kind = payload?.kind || pendingPasteContext.kind || 'blofinApi';
+    const result = kind === 'nousApi'
+      ? await saveNousPaste(payload?.text || '')
+      : await saveBlofinPaste(payload?.text || '');
     if (!result.ok) {
       if (pasteWindow && !pasteWindow.isDestroyed()) {
         pasteWindow.webContents.send('paste-save-error', result.error || 'Save failed');
