@@ -917,24 +917,40 @@ function getVpnOnboarding() {
 let signupWindow = null;
 let pendingSignupContext = { type: 'proton', url: '', title: '' };
 const SIGNUP_URLS = {
-  proton: 'https://account.proton.me/signup',
+  proton: 'https://account.proton.me/signup?product=mail&plan=free',
   protonvpn: 'https://account.protonvpn.com/signup',
+  protonMail: 'https://mail.proton.me/',
+  protonMailLogin: 'https://account.proton.me/login',
   protonDownloads: 'https://account.protonvpn.com/downloads',
+  gmail: 'https://accounts.google.com/signup',
   blofin: 'https://blofin.com/register',
   blofinLogin: 'https://blofin.com/login',
 };
 const SIGNUP_TITLES = {
-  proton: 'Create Proton account (free email + VPN)',
+  proton: 'Create Proton account — pick your @proton.me email',
   protonvpn: 'Create Proton VPN account',
+  protonMail: 'Proton Mail — verify email & read BloFin messages',
+  protonMailLogin: 'Sign in to Proton Mail',
   protonDownloads: 'Download Proton VPN configs',
-  blofin: 'Create BloFin account',
+  gmail: 'Create Gmail address (optional)',
+  blofin: 'Create BloFin account — use your Proton email',
   blofinLogin: 'Sign in to BloFin',
+};
+const SIGNUP_HINTS = {
+  proton: 'Choose a username — that becomes your free @proton.me address (used for BloFin). Complete CAPTCHA, then Done.',
+  protonMail: 'Sign in if asked. Open Proton’s verification email or BloFin’s signup email and click the link. Then Done.',
+  gmail: 'Optional — only if you do not want a Proton email for BloFin. Then Done.',
+  blofin: 'Register with your @proton.me email (or Gmail). Complete CAPTCHA, then Done.',
+  protonDownloads: 'Download WireGuard configs after signing in. Then Done.',
+  protonvpn: 'Create free VPN account if separate from Proton Mail. Then Done.',
+  blofinLogin: 'Sign in to BloFin. Then Done.',
+  protonMailLogin: 'Sign in to Proton Mail. Then Done.',
 };
 
 function openSignupWindow(type) {
   const url = SIGNUP_URLS[type] || SIGNUP_URLS.proton;
   const title = SIGNUP_TITLES[type] || 'Sign up';
-  pendingSignupContext = { type, url, title };
+  pendingSignupContext = { type, url, title, hint: SIGNUP_HINTS[type] || SIGNUP_HINTS.proton };
   const shellPath = path.join(__dirname, 'renderer', 'signup-shell.html');
   if (signupWindow && !signupWindow.isDestroyed()) {
     signupWindow.setTitle(title);

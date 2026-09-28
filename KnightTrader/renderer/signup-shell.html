@@ -27,13 +27,14 @@
   <div class="toolbar">
     <div>
       <div id="title" class="toolbar-title">Sign up</div>
-      <div class="toolbar-hint">Complete CAPTCHA and forms here, then click Done to continue setup.</div>
+      <div id="hint" class="toolbar-hint">Complete CAPTCHA and forms here, then click Done to continue setup.</div>
     </div>
     <button id="btn-done" type="button" class="btn-done">Done — continue</button>
   </div>
   <webview id="wv" partition="persist:kt-signup" allowpopups></webview>
   <script>
     const titleEl = document.getElementById('title');
+    const hintEl = document.getElementById('hint');
     const wv = document.getElementById('wv');
     let signupType = 'proton';
 
@@ -41,6 +42,7 @@
       if (!cfg) return;
       signupType = cfg.type || signupType;
       if (cfg.title) titleEl.textContent = cfg.title;
+      if (cfg.hint) hintEl.textContent = cfg.hint;
       if (cfg.url && wv.getURL() !== cfg.url) wv.src = cfg.url;
     }
 

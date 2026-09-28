@@ -275,15 +275,17 @@
               <div class="step-num">5</div>
               <div class="step-body">
                 <div class="step-title">First-run wizard — ProtonVPN + BloFin (in the app)</div>
-                <div class="step-desc">On first launch, KnightTrader opens a <strong>one-time setup wizard</strong>. You only click through a few popup windows — no manual browser hunting.</div>
-                <div class="step-desc"><strong>What happens automatically:</strong></div>
+                <div class="step-desc">On first launch, KnightTrader opens a <strong>one-time setup wizard</strong>. Each step opens an in-app popup — create email, verify email, sign up for BloFin — then click <strong>Done — continue</strong>.</div>
+                <div class="step-desc"><strong>Email + account popups (in order):</strong></div>
                 <ol class="howto-list">
                   <li>The app checks whether BloFin is allowed in your country.</li>
-                  <li>If VPN is needed, it opens an in-app <strong>Proton signup</strong> popup — complete CAPTCHA there, then click <strong>Done — continue</strong>.</li>
-                  <li>Enter your Proton email + password in the wizard (also saved on the <strong>Credentials</strong> tab).</li>
-                  <li>Click <strong>Install &amp; connect VPN</strong> — WireGuard + ProtonVPN install in the background; ProtonVPN opens for you to pick a free server in <strong>Netherlands, Japan, Romania, or Poland</strong>.</li>
-                  <li>An in-app <strong>BloFin signup</strong> popup opens — register with your Proton email, click <strong>Done — continue</strong>.</li>
-                  <li>Your BloFin account email is saved on the <strong>Credentials</strong> tab.</li>
+                  <li><strong>Create @proton.me email</strong> popup — pick a username (that is your free email for BloFin + VPN).</li>
+                  <li><strong>Proton Mail</strong> popup — sign in, open Proton’s verification email, click the link.</li>
+                  <li>Save your @proton.me + password in the wizard (<strong>Credentials</strong> tab).</li>
+                  <li>If VPN is needed: <strong>Install &amp; connect VPN</strong> — pick a free server in <strong>Netherlands, Japan, Romania, or Poland</strong>.</li>
+                  <li><strong>BloFin signup</strong> popup — register using your @proton.me address.</li>
+                  <li><strong>Proton Mail</strong> popup again — open BloFin’s verification email and click the link.</li>
+                  <li>Save your BloFin account email on the <strong>Credentials</strong> tab.</li>
                 </ol>
                 <div class="step-desc"><strong>If you skipped the wizard:</strong> open the <strong>Credentials</strong> tab anytime — use <strong>Re-run setup wizard</strong> or the VPN assistant buttons there.</div>
                 <div class="step-desc">If <strong>blofin.com</strong> already works without VPN in your country, the wizard skips VPN steps. Do not turn VPN on unnecessarily — extra hops can cause login issues.</div>
@@ -814,11 +816,13 @@
               <button type="button" id="btn-rerun-wizard" class="btn-secondary">Re-run setup wizard</button>
             </div>
             <div class="vpn-onboard-signup-row">
-              <button type="button" id="btn-signup-proton" class="btn-secondary">Create Proton Account ↗</button>
+              <button type="button" id="btn-signup-proton" class="btn-secondary">Create @proton.me email ↗</button>
+              <button type="button" id="btn-signup-proton-mail" class="btn-secondary">Open Proton Mail ↗</button>
+              <button type="button" id="btn-signup-gmail" class="btn-secondary">Create Gmail (optional) ↗</button>
               <button type="button" id="btn-signup-proton-downloads" class="btn-secondary">Proton VPN Configs ↗</button>
               <button type="button" id="btn-signup-blofin" class="btn-secondary">Create BloFin Account ↗</button>
             </div>
-            <p class="vpn-onboard-note">CAPTCHA is required once per site — complete it in the popup, then click <strong>Done — continue</strong>. Credentials save to this tab automatically during the wizard.</p>
+            <p class="vpn-onboard-note">Email flow: create <strong>@proton.me</strong> → verify in <strong>Proton Mail</strong> popup → register on <strong>BloFin</strong> with that address → verify BloFin email in Proton Mail. Click <strong>Done — continue</strong> after each popup.</p>
             <div id="vpn-status" class="vpn-onboard-log"></div>
           </div>
         </div>
@@ -1221,7 +1225,7 @@
         <div class="first-run-badge">First-time setup</div>
         <h2 id="first-run-title">Region &amp; accounts</h2>
         <p id="first-run-lead" class="first-run-lead">KnightTrader checks your location and walks you through free ProtonVPN + BloFin signup — one time only.</p>
-        <div id="first-run-step-label" class="first-run-step-label">Step 1 of 6 — Check location</div>
+        <div id="first-run-step-label" class="first-run-step-label">Step 1 of 8 — Check location</div>
         <div id="first-run-body" class="first-run-body">
           <p id="first-run-text">We need to know if BloFin is available in your country. Some regions require a free VPN first.</p>
           <div id="first-run-creds" class="first-run-creds hidden">
