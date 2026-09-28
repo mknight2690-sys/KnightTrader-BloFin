@@ -199,8 +199,8 @@
       needsVpn = !locationAllowed;
       await window.kt.markOnboardingStep('location');
       if (locationAllowed) {
-        setStatus(`Location OK (${res?.ipInfo?.countryName || 'allowed'}) — skipping VPN steps.`, 'ok');
-        walkQueue = walkQueue.filter((id) => !['protonAccount', 'protonMail', 'protonSave', 'vpn'].includes(id));
+        setStatus(`Location OK (${res?.ipInfo?.countryName || 'allowed'}) — VPN connect not needed; Proton signup still required if you have no @proton.me yet.`, 'ok');
+        walkQueue = walkQueue.filter((id) => id !== 'vpn');
       }
       advanceWalk();
       return;

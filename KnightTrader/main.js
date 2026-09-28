@@ -318,37 +318,44 @@ function materializeRelaunchScripts(installDir) {
   return { relaunchDir, startBat, loopBat };
 }
 
-function spawnPostInstallRelaunchLoop(installerPath) {
+function getUpdateRunnerBatPath() {
+  const besideExe = path.join(getInstallDir(), 'update-install.bat');
+  if (fs.existsSync(besideExe)) return besideExe;
+  const inApp = path.join(__dirname, 'update-install.bat');
+  if (fs.existsSync(inApp)) return inApp;
+  return path.join(os.tmpdir(), 'knighttrader-update-install.bat');
+}
+
+function spawnUpdateRunner(installerPath) {
   if (process.platform !== 'win32') return;
   try {
     const installDir = getInstallDir();
-    const { loopBat } = materializeRelaunchScripts(installDir);
-    if (!fs.existsSync(loopBat)) {
-      appendLog('⚠ relaunch-loop.bat missing — cannot arm post-install relaunch', 'warn');
+    materializeRelaunchScripts(installDir);
+    const flagPath = path.join(app.getPath('userData'), 'kt-relaunch-ok.flag');
+    const logPath = path.join(os.tmpdir(), 'knighttrader-update.log');
+    let runnerBat = getUpdateRunnerBatPath();
+    const bundled = path.join(__dirname, 'update-install.bat');
+    if (!fs.existsSync(runnerBat) && fs.existsSync(bundled)) {
+      runnerBat = path.join(os.tmpdir(), 'knighttrader-update-install.bat');
+      fs.copyFileSync(bundled, runnerBat);
+    }
+    if (!fs.existsSync(runnerBat)) {
+      appendLog('⚠ update-install.bat missing — cannot run silent update', 'warn');
       return;
     }
-    const flagPath = path.join(app.getPath('userData'), 'kt-relaunch-ok.flag');
-    const lockPath = path.join(os.tmpdir(), 'knighttrader-relaunch.lock');
-    const logPath = path.join(os.tmpdir(), 'knighttrader-relaunch.log');
-    try {
-      if (fs.existsSync(lockPath)) {
-        const age = Date.now() - fs.statSync(lockPath).mtimeMs;
-        if (age > 20 * 60 * 1000) fs.unlinkSync(lockPath);
-      }
-    } catch (_) {}
     try { fs.unlinkSync(flagPath); } catch (_) {}
+    try { fs.unlinkSync(path.join(os.tmpdir(), 'knighttrader-relaunch.lock')); } catch (_) {}
+    try { fs.unlinkSync(path.join(os.tmpdir(), 'knighttrader-update.lock')); } catch (_) {}
     const oldPid = Number(process.pid) || 0;
-    const setupMatch = installerPath
-      ? path.basename(installerPath, path.extname(installerPath))
-      : 'KnightTrader-Blofin-Setup';
+    const exePath = process.execPath;
     const child = spawn('cmd.exe', [
       '/d', '/c',
-      `start "" /MIN "${loopBat}" "${installDir}" ${oldPid} "${flagPath}" "${setupMatch}"`,
+      `start "" /MIN "${runnerBat}" "${installerPath}" "${installDir}" "${exePath}" ${oldPid} "${flagPath}"`,
     ], { detached: true, stdio: 'ignore', windowsHide: true });
     child.unref();
-    appendLog(`🔁 Post-install relaunch loop armed — log: ${logPath}`, 'info');
+    appendLog(`🔁 Update runner armed (wait install → relaunch) — log: ${logPath}`, 'info');
   } catch (e) {
-    appendLog(`⚠ Post-install relaunch loop failed: ${e?.message || e}`, 'warn');
+    appendLog(`⚠ Update runner failed: ${e?.message || e}`, 'warn');
   }
 }
 
@@ -412,10 +419,9 @@ async function beginSilentUpdateInstall() {
 
   const installer = downloadedInstallerPath || updateDownloadedInfo?.downloadedFile;
   if (process.platform === 'win32' && installer && fs.existsSync(installer)) {
-    appendLog(`🔄 Running silent installer: ${path.basename(installer)}`, 'info');
-    spawn(installer, ['/S'], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
-    spawnPostInstallRelaunchLoop(installer);
-    setTimeout(() => { try { app.exit(0); } catch (_) {} }, 2000).unref?.();
+    appendLog(`🔄 Running silent installer: ${path.basename(installer)} → ${getInstallDir()}`, 'info');
+    spawnUpdateRunner(installer);
+    setTimeout(() => { try { app.exit(0); } catch (_) {} }, 1500).unref?.();
     return;
   }
 
@@ -909,13 +915,10 @@ function hasNousApi(creds) {
 
 async function getOnboardingContext() {
   const hermes = checkHermesInstalled();
-  let locationAllowed = storeData.onboarding?.locationAllowed;
+  let currentGeoAllowed = false;
   try {
     const loc = await getVpnOnboarding().checkLocation();
-    locationAllowed = !!loc?.allowed;
-    if (locationAllowed) {
-      storeData.onboarding.locationAllowed = true;
-    }
+    currentGeoAllowed = !!loc?.allowed;
   } catch (_) {}
   let gatewayRunning = false;
   try {
@@ -925,7 +928,7 @@ async function getOnboardingContext() {
   return {
     hermesInstalled: !!hermes?.installed,
     dashboardRunning: gatewayRunning,
-    locationAllowed: locationAllowed ?? null,
+    currentGeoAllowed,
     platform: process.platform,
   };
 }
@@ -934,7 +937,7 @@ function finalizeOnboardingIfDone() {
   const ctx = {
     hermesInstalled: !!checkHermesInstalled()?.installed,
     dashboardRunning: dashboardReady,
-    locationAllowed: storeData.onboarding?.locationAllowed,
+    currentGeoAllowed: false,
     platform: process.platform,
   };
   const evaluation = evaluateOnboarding(storeData, storeData.onboarding, ctx);
@@ -3504,7 +3507,6 @@ function registerIPC() {
     if (result?.allowed) {
       storeData.onboarding = markStepComplete(storeData.onboarding, 'vpn');
       storeData.onboarding.vpnVerified = true;
-      if (result.method === 'direct') storeData.onboarding.locationAllowed = true;
       saveStore(storeData);
     }
     return result;

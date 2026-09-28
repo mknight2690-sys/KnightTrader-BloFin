@@ -47,19 +47,21 @@ function hasNousApi(creds) {
 
 function stepComplete(stepId, creds, onboarding, ctx = {}) {
   const done = onboarding?.stepsCompleted || {};
-  const skipVpn = ctx.locationAllowed === true;
+  // Only skip the VPN *connect* step when geo is currently allowed.
+  // Never skip Proton signup — being on VPN must not bypass CAPTCHA/account steps.
+  const geoOkNow = ctx.currentGeoAllowed === true;
 
   switch (stepId) {
     case 'location':
       return !!done.location || !!onboarding?.locationChecked;
     case 'protonAccount':
-      return skipVpn || !!done.protonAccount || !!String(creds?.proton?.email || '').trim();
+      return !!done.protonAccount || !!String(creds?.proton?.email || '').trim();
     case 'protonMail':
-      return skipVpn || !!done.protonMail;
+      return !!done.protonMail;
     case 'protonSave':
-      return skipVpn || (!!String(creds?.proton?.email || '').trim() && !!done.protonSave);
+      return !!String(creds?.proton?.email || '').trim() && !!done.protonSave;
     case 'vpn':
-      return skipVpn || !!onboarding?.vpnVerified || !!done.vpn;
+      return geoOkNow || !!onboarding?.vpnVerified || !!done.vpn;
     case 'blofinAccount':
       return !!done.blofinAccount || !!String(creds?.blofinAccount?.email || '').trim();
     case 'blofinMail':
