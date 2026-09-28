@@ -6,7 +6,7 @@
 const vpn = require('../vpn');
 const { VpnOnboarding, FREE_TRY_ORDER } = require('./vpn-onboarding');
 const { ensureProtonSandbox } = require('./proton-sandbox');
-const { writeCountryConfig } = require('./proton-auto');
+const { writeCountryConfigOffMainThread } = require('./proton-auto');
 
 const SWITCH_WAIT_MS = 110 * 1000;
 
@@ -188,7 +188,7 @@ async function waitForAllowedCountry({
       });
       try {
         if (credentials?.email && credentials?.password && userDataPath) {
-          await writeCountryConfig({
+          await writeCountryConfigOffMainThread({
             userDataPath,
             email: credentials.email,
             password: credentials.password,

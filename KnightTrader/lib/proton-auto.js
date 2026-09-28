@@ -6,6 +6,7 @@
 const { createHash, generateKeyPairSync } = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { Worker } = require('worker_threads');
 const vpn = require('../vpn');
 
 const API = 'https://vpn-api.proton.me';
@@ -199,4 +200,39 @@ async function writeCountryConfig({ userDataPath, email, password, country, serv
   return { ok: true, path: dest, country: code, server: picked.logical.Name || code };
 }
 
-module.exports = { writeCountryConfig, FREE_COUNTRIES };
+function writeCountryConfigOffMainThread(opts) {
+  return new Promise((resolve, reject) => {
+    let worker;
+    try {
+      worker = new Worker(path.join(__dirname, 'proton-auto-worker.js'), {
+        workerData: opts,
+        execArgv: [],
+      });
+    } catch (err) {
+      writeCountryConfig(opts).then(resolve, reject);
+      return;
+    }
+    let settled = false;
+    const finish = (err, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { worker.terminate(); } catch (_) {}
+      if (err) reject(err);
+      else resolve(value);
+    };
+    const timer = setTimeout(() => {
+      finish(new Error('Proton login took too long and was stopped so KnightTrader could stay open.'));
+    }, 120000);
+    worker.on('message', (msg) => {
+      if (msg && msg.ok) finish(null, msg.result);
+      else finish(new Error(msg?.error || 'Proton login failed'));
+    });
+    worker.on('error', (err) => finish(err));
+    worker.on('exit', (code) => {
+      if (!settled && code !== 0) finish(new Error(`Proton login stopped (${code})`));
+    });
+  });
+}
+
+module.exports = { writeCountryConfig, writeCountryConfigOffMainThread, FREE_COUNTRIES };

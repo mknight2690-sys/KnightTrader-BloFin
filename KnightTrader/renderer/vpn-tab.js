@@ -42,6 +42,7 @@
   let ensureRunning = false;
   let autoEnsureStarted = false;
   let usNoticeShown = false;
+  let userHidWaitOverlay = false;
 
   function appendLog(line) {
     if (!el.log) return;
@@ -77,6 +78,7 @@
     try {
       document.querySelector('.nav-item[data-tab="vpn"]')?.classList.add('nav-attention');
     } catch (_) {}
+    window.parkWebviewsForOverlay?.(true);
   }
 
   function hideWaitOverlay() {
@@ -84,6 +86,7 @@
     try {
       document.querySelector('.nav-item[data-tab="vpn"]')?.classList.remove('nav-attention');
     } catch (_) {}
+    window.parkWebviewsForOverlay?.(false);
   }
 
   function renderStatus(ipInfo, stable = false) {
@@ -261,6 +264,7 @@
   }
 
   function showAccountPrompt(ipInfo) {
+    if (userHidWaitOverlay) return;
     setAccountPhase(true);
     showWaitOverlay({
       title: ipInfo?.country === 'US' ? 'You are in the United States — VPN required' : 'VPN required for BloFin',
@@ -272,6 +276,10 @@
   }
 
   function showPleaseWait(ipInfo, payload = {}) {
+    if (userHidWaitOverlay) {
+      if (ipInfo) renderStatus(ipInfo, !!ipInfo.allowed);
+      return;
+    }
     setAccountPhase(false);
     showWaitOverlay({
       title: 'Please wait',
@@ -358,7 +366,12 @@
   el.btnWaitCreate?.addEventListener('click', () => createProtonAccount());
   el.btnWaitContinue?.addEventListener('click', () => continueAfterAccount());
   el.btnWaitTab?.addEventListener('click', () => {
-    try { document.querySelector('.nav-item[data-tab="vpn"]')?.click(); } catch (_) {}
+    userHidWaitOverlay = true;
+    hideWaitOverlay();
+    if (typeof window.switchTab === 'function') window.switchTab('vpn');
+    else document.querySelector('.nav-item[data-tab="vpn"]')?.click();
+    refreshStatus(false);
+    appendLog('VPN tab open. Server changes continue in the background.');
   });
   el.btnDisconnect?.addEventListener('click', async () => {
     await window.kt.vpnDisconnect();

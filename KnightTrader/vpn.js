@@ -5,7 +5,7 @@
 // through a BloFin-allowed country, then PROVES the route by checking the
 // real external IP and geolocating it.
 
-const { execFile, spawn } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -275,11 +275,29 @@ async function disconnect() {
   }
 }
 
-function run(bin, args) {
+function run(bin, args, timeoutMs = 90000) {
   return new Promise((resolve, reject) => {
-    execFile(bin, args, { windowsHide: true }, (err, stdout, stderr) => {
-      if (err) return reject(new Error(stderr || err.message));
-      resolve(stdout);
+    let settled = false;
+    const child = spawn(bin, args, {
+      detached: true,
+      windowsHide: true,
+      stdio: 'ignore',
+    });
+    const finish = (err, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (err) reject(err);
+      else resolve(value);
+    };
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch (_) {}
+      finish(new Error('WireGuard did not finish. Accept the Windows permission prompt if it is open, then retry.'));
+    }, timeoutMs);
+    child.on('error', (err) => finish(err));
+    child.on('exit', (code) => {
+      if (code === 0) finish(null, '');
+      else finish(new Error(`WireGuard exited with code ${code}`));
     });
   });
 }

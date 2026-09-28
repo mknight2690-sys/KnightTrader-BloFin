@@ -206,6 +206,20 @@ let autoInstallTimer = null;
 let autoUpdatePipelineRunning = false;
 // Set while tearing down to install. Tray close handlers must not block quit.
 let isQuittingForUpdate = false;
+let userRequestedQuit = false;
+
+function noteMainError(kind, err) {
+  const text = err && err.stack ? err.stack : String(err);
+  try {
+    const dir = path.join(os.homedir(), '.knighttrader');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, 'main-crash.log'), `${new Date().toISOString()} ${kind} ${text}\n`);
+  } catch (_) {}
+  try { appendLog(`⚠ Kept running after ${kind}: ${err?.message || err}`, 'warn'); } catch (_) {}
+}
+
+process.on('uncaughtException', (err) => noteMainError('uncaught', err));
+process.on('unhandledRejection', (err) => noteMainError('rejection', err));
 
 autoUpdater.on('checking-for-update', () => {
   appendLog('🔎 Checking for updates…', 'info');
@@ -1989,6 +2003,7 @@ function refreshTradingWebviewAfterRestore() {
 }
 
 function quitFromTray() {
+  userRequestedQuit = true;
   trayReady = false;
   if (appTray) {
     try { appTray.destroy(); } catch {}
@@ -3588,6 +3603,7 @@ function registerIPC() {
     return result;
   });
   ipcMain.handle('relaunch-app', () => {
+    userRequestedQuit = true;
     app.relaunch();
     app.quit();
   });
@@ -3634,16 +3650,22 @@ function registerIPC() {
     const preferredCountry = opts?.preferredCountry
       || storeData.onboarding?.preferredVpnCountry
       || 'random';
-    const result = await ensureBlofinAllowedRoute({
-      ...(opts || {}),
-      preferredCountry,
-      userDataPath: app.getPath('userData'),
-      credentials: {
-        email: storeData.proton?.email || '',
-        password: storeData.proton?.password || '',
-      },
-      emit,
-    });
+    let result;
+    try {
+      result = await ensureBlofinAllowedRoute({
+        ...(opts || {}),
+        preferredCountry,
+        userDataPath: app.getPath('userData'),
+        credentials: {
+          email: storeData.proton?.email || '',
+          password: storeData.proton?.password || '',
+        },
+        emit,
+      });
+    } catch (err) {
+      noteMainError('vpn-ensure', err);
+      return { ok: false, allowed: false, error: err?.message || String(err) };
+    }
     if (result?.allowed) {
       storeData.onboarding = markStepComplete(storeData.onboarding, 'vpn');
       storeData.onboarding.vpnVerified = true;
@@ -3837,6 +3859,15 @@ function createWindow() {
     appendLog(`⚠ Failed to load UI: ${code} - ${desc}`, 'warn');
     mainWindow.show();
     mainWindow.focus();
+  });
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    noteMainError('renderer', new Error(details?.reason || 'gone'));
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    setTimeout(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      mainWindow.loadFile('renderer/index.html').catch(() => {});
+      try { mainWindow.show(); } catch (_) {}
+    }, 400);
   });
   mainWindow.on('closed', () => { mainWindow = null; });
   mainWindow.on('hide', () => {
@@ -4131,6 +4162,7 @@ function registerTradingSystemIPC() {
 app.whenReady().then(async () => {
   const gotSingleInstanceLock = app.requestSingleInstanceLock();
   if (!gotSingleInstanceLock) {
+    userRequestedQuit = true;
     appendLog('⚠ Another instance is already running — closing this duplicate.', 'warn');
     app.quit();
     return;
@@ -4224,9 +4256,24 @@ app.whenReady().then(async () => {
     }
   });
 });
+let unexpectedCloseReopens = 0;
 app.on('window-all-closed', () => {
-  if (isQuittingForUpdate) return;
-  if (process.platform !== 'darwin') app.quit();
+  if (isQuittingForUpdate || userRequestedQuit) {
+    if (process.platform !== 'darwin') app.quit();
+    return;
+  }
+  if (process.platform === 'darwin') return;
+  if (unexpectedCloseReopens >= 2) {
+    app.quit();
+    return;
+  }
+  unexpectedCloseReopens += 1;
+  try {
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+  } catch (err) {
+    noteMainError('reopen', err);
+    app.quit();
+  }
 });
 // Force-quit safety net for updates: if any window survives the close
 // flow while we're installing an update (e.g. a hidden tray window whose

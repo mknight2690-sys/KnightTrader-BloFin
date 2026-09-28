@@ -626,6 +626,14 @@ function syncWebviewParking(activeTab) {
   parkWebview(el.tradingWebview, activeTab !== 'trading');
   parkWebview(el.hermesWebview, activeTab !== 'hermes');
 }
+window.parkWebviewsForOverlay = function parkWebviewsForOverlay(park) {
+  if (park) {
+    parkWebview(el.tradingWebview, true);
+    parkWebview(el.hermesWebview, true);
+    return;
+  }
+  syncWebviewParking(currentTab);
+};
 
 function attachTradingGuest(webview) {
   if (!webview) return;
@@ -728,6 +736,7 @@ function switchTab(name) {
   // they were (no lapse in service / context).
   try { localStorage.setItem('kt-last-tab', name); } catch (_) {}
 }
+window.switchTab = switchTab;
 
 async function loadTradingDesk(forceReload = false) {
   if (!tradingPreloadPath) {
