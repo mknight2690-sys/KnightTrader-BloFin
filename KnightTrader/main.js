@@ -1163,7 +1163,7 @@ const SIGNUP_ONBOARDING_STEP = {
 function layoutSignupView() {
   if (!signupWindow || signupWindow.isDestroyed() || !signupView) return;
   const [width, height] = signupWindow.getContentSize();
-  const top = 64;
+  const top = 96;
   signupView.setBounds({
     x: 0,
     y: top,
@@ -1206,7 +1206,11 @@ function loadSignupPage(url) {
     });
     signupView.webContents.on('did-fail-load', (_event, code, desc, failedUrl) => {
       if (code === -3) return;
+      const error = `Page failed to load (${code} ${desc}). Click Done — continue after you retry, or check the address.`;
       appendLog(`⚠ Signup page failed to load (${code} ${desc}): ${failedUrl}`, 'warn');
+      try {
+        signupWindow?.webContents.send('signup-shell-config', { ...pendingSignupContext, error });
+      } catch (_) {}
     });
   }
   signupWindow.setBrowserView(signupView);
@@ -1237,9 +1241,8 @@ function openSignupWindow(type) {
     signupWindow.setTitle(title);
     signupWindow.webContents.send('signup-shell-config', pendingSignupContext);
     loadSignupPage(url);
-    signupWindow.show();
-    signupWindow.focus();
-    return;
+    raiseSignupWindow();
+    return { ok: true, type, title, reused: true };
   }
   signupWindow = new BrowserWindow({
     width: 1100,
@@ -1263,15 +1266,32 @@ function openSignupWindow(type) {
     }
   });
   signupWindow.on('resize', layoutSignupView);
+  signupWindow.on('show', layoutSignupView);
   signupWindow.on('closed', () => {
     signupView = null;
     signupWindow = null;
   });
+  raiseSignupWindow();
+  return { ok: true, type, title };
 }
 
-function notifySignupStepDone(type) {
+function raiseSignupWindow() {
+  if (!signupWindow || signupWindow.isDestroyed()) return;
+  try {
+    signupWindow.show();
+    signupWindow.moveTop();
+    signupWindow.focus();
+    signupWindow.setAlwaysOnTop(true);
+    setTimeout(() => {
+      try { if (signupWindow && !signupWindow.isDestroyed()) signupWindow.setAlwaysOnTop(false); } catch (_) {}
+    }, 800);
+  } catch (_) {}
+}
+
+function notifySignupStepDone(payload) {
+  const data = typeof payload === 'string' ? { type: payload } : (payload || {});
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('signup-step-done', { type });
+    mainWindow.webContents.send('signup-step-done', data);
   }
 }
 
@@ -3698,16 +3718,37 @@ function registerIPC() {
       message: 'Proton files are in KnightTrader app data. The Proton install already on this PC is not opened.',
     };
   });
-  ipcMain.handle('vpn-open-signup', (_e, type) => { openSignupWindow(type); return { ok: true }; });
+  ipcMain.handle('vpn-open-signup', (_e, type) => {
+    try {
+      return openSignupWindow(type) || { ok: true, type };
+    } catch (err) {
+      noteMainError('signup-open', err);
+      return { ok: false, error: err?.message || String(err) };
+    }
+  });
   ipcMain.handle('get-signup-params', () => pendingSignupContext);
-  ipcMain.on('signup-done', (_e, payload) => {
+  ipcMain.handle('signup-done', async (_e, payload) => {
     const type = payload?.type || pendingSignupContext.type;
     const stepId = SIGNUP_ONBOARDING_STEP[type];
     if (stepId) markOnboardingStepId(stepId);
+    const protonStep = type === 'proton' || type === 'protonLogin';
+    const message = protonStep
+      ? 'Click received. Signup window is closing. On the VPN tab, enter that Proton email and password, then click Continue — connect.'
+      : 'Click received. This step is marked done.';
+    notifySignupStepDone({ type, stepId, message });
     try {
-      if (signupWindow && !signupWindow.isDestroyed()) signupWindow.close();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+      }
     } catch (_) {}
-    notifySignupStepDone({ type, stepId });
+    setTimeout(() => {
+      try {
+        if (signupWindow && !signupWindow.isDestroyed()) signupWindow.close();
+      } catch (_) {}
+    }, 400);
+    return { ok: true, type, stepId, message };
   });
   ipcMain.handle('get-paste-params', () => pendingPasteContext);
   ipcMain.handle('open-blofin-paste', () => { openPasteWindow('blofinApi'); return { ok: true }; });

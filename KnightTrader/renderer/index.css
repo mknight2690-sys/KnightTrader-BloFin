@@ -672,7 +672,35 @@ select { appearance: none; padding-right: 30px; }
 .vpn-cty { flex: 1; text-align: left; }
 .vpn-cty-code { color: var(--text3); font-size: 12px; font-family: var(--mono, monospace); }
 .vpn-no-cfg { color: var(--warn, #f5a623); font-size: 11px; font-weight: 700; }
-.vpn-actions { display: flex; gap: 10px; margin-bottom: 20px; }
+.vpn-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.vpn-action-confirm {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(245, 197, 66, 0.45);
+  background: rgba(245, 197, 66, 0.08);
+  color: var(--accent, #f5c542);
+  font-size: 13px;
+  font-weight: 600;
+}
+.click-confirm {
+  position: fixed;
+  top: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10080;
+  max-width: min(640px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #f5c542;
+  background: #1a1408;
+  color: #f5c542;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.click-confirm.hidden { display: none; }
 .vpn-help {
   background: var(--panel2);
   border: 1px solid var(--border2);

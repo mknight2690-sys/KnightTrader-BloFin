@@ -21,6 +21,11 @@
     btnSignin: $('btn-vpn-tab-signin'),
     btnCreate: $('btn-vpn-tab-create'),
     btnDisconnect: $('btn-vpn-tab-disconnect'),
+    btnSaveConnect: $('btn-vpn-tab-save-connect'),
+    actionStatus: $('vpn-tab-action'),
+    tabEmail: $('vpn-tab-email'),
+    tabPassword: $('vpn-tab-password'),
+    clickConfirm: $('click-confirm'),
     waitOverlay: $('vpn-wait-overlay'),
     waitTitle: $('vpn-wait-title'),
     waitCountry: $('vpn-wait-country'),
@@ -49,6 +54,16 @@
     const ts = new Date().toLocaleTimeString();
     el.log.textContent = `${el.log.textContent ? el.log.textContent + '\n' : ''}[${ts}] ${line}`;
     el.log.scrollTop = el.log.scrollHeight;
+  }
+
+  function confirmClick(message) {
+    appendLog(message);
+    if (el.actionStatus) el.actionStatus.textContent = message;
+    if (el.waitCycle && !el.waitOverlay?.classList.contains('hidden')) el.waitCycle.textContent = message;
+    if (el.clickConfirm) {
+      el.clickConfirm.textContent = message;
+      el.clickConfirm.classList.remove('hidden');
+    }
   }
 
   function setNavBadge(show) {
@@ -320,63 +335,116 @@
     } catch (_) {}
   }
 
-  function signInExistingProton() {
-    appendLog('Opening Proton sign-in. The Proton app already on this PC is not opened.');
-    window.kt.vpnOpenSignup('protonLogin');
+  async function openProtonSignup(type) {
+    const opening = type === 'proton'
+      ? 'Click received — opening Create Proton account.'
+      : 'Click received — opening Sign in to existing Proton.';
+    confirmClick(opening);
+    try {
+      const res = await window.kt.vpnOpenSignup(type);
+      if (!res?.ok) {
+        confirmClick(`Click received, but the window did not open: ${res?.error || 'unknown error'}`);
+        return;
+      }
+      confirmClick(type === 'proton'
+        ? 'Create Proton account window is open. Finish the form, then click Done — continue in the top right.'
+        : 'Proton sign-in window is open. Sign in, then click Done — continue in the top right.');
+    } catch (e) {
+      confirmClick(`Click received, but the window failed: ${e.message}`);
+    }
     window.kt.vpnPrepareSandbox?.().catch(() => {});
+  }
+
+  function signInExistingProton() {
+    openProtonSignup('protonLogin');
   }
 
   function createProtonAccount() {
-    appendLog('Opening Proton account signup.');
-    window.kt.vpnOpenSignup('proton');
-    window.kt.vpnPrepareSandbox?.().catch(() => {});
+    openProtonSignup('proton');
   }
 
-  async function continueAfterAccount() {
-    const email = el.waitEmail?.value?.trim() || '';
-    const password = el.waitPassword?.value || '';
-    if (!email || !password) {
-      appendLog('Enter the Proton email and password from the account you just created or signed in to.');
+  async function saveProtonAndConnect(email, password) {
+    const trimmed = String(email || '').trim();
+    if (!trimmed || !password) {
+      confirmClick('Click received. Enter the Proton email and password first, then click Continue — connect again.');
+      (el.tabEmail || el.waitEmail)?.focus();
       return;
     }
-    await window.kt.saveCredentials({ proton: { email, password } });
+    confirmClick('Click received. Saving the Proton login and starting the country connect.');
+    await window.kt.saveCredentials({ proton: { email: trimmed, password } });
     await window.kt.markOnboardingStep('protonAccount').catch(() => {});
     await window.kt.markOnboardingStep('protonSave').catch(() => {});
+    if (el.tabEmail) el.tabEmail.value = trimmed;
+    if (el.waitEmail) el.waitEmail.value = trimmed;
+    userHidWaitOverlay = false;
     showPleaseWait();
-    appendLog('Saved Proton login. Please wait while servers change.');
+    confirmClick('Proton login saved. Please wait — KnightTrader is connecting and will change server after 1:50 if needed.');
     await runEnsure();
   }
 
+  async function continueAfterAccount() {
+    await saveProtonAndConnect(el.waitEmail?.value, el.waitPassword?.value);
+  }
+
+  async function continueFromVpnTab() {
+    await saveProtonAndConnect(el.tabEmail?.value, el.tabPassword?.value);
+  }
+
   async function openProtonDesktopApp() {
-    appendLog('Preparing the sandboxed Proton copy. The system Proton install is left alone.');
+    confirmClick('Click received — preparing the sandboxed Proton copy. The system Proton install is left alone.');
     try {
       const res = await window.kt.vpnOpenProtonApp();
-      appendLog(res?.message || 'Sandboxed Proton files are in KnightTrader app data.');
+      confirmClick(res?.message || 'Sandboxed Proton files are in KnightTrader app data.');
     } catch (e) {
-      appendLog(`Sandbox prepare failed: ${e.message}`);
+      confirmClick(`Click received, but sandbox prepare failed: ${e.message}`);
     }
   }
 
-  el.btnVerify?.addEventListener('click', () => refreshStatus(true));
-  el.btnEnsure?.addEventListener('click', () => runEnsure());
+  el.btnVerify?.addEventListener('click', () => {
+    confirmClick('Click received — checking your country now.');
+    refreshStatus(true);
+  });
+  el.btnEnsure?.addEventListener('click', () => {
+    confirmClick('Click received — ensuring a BloFin-allowed route.');
+    runEnsure();
+  });
   el.btnProton?.addEventListener('click', () => openProtonDesktopApp());
   el.btnSignin?.addEventListener('click', () => signInExistingProton());
   el.btnCreate?.addEventListener('click', () => createProtonAccount());
+  el.btnSaveConnect?.addEventListener('click', () => continueFromVpnTab());
   el.btnWaitSignin?.addEventListener('click', () => signInExistingProton());
   el.btnWaitCreate?.addEventListener('click', () => createProtonAccount());
   el.btnWaitContinue?.addEventListener('click', () => continueAfterAccount());
   el.btnWaitTab?.addEventListener('click', () => {
+    confirmClick('Click received — opening the VPN tab. Server changes keep running.');
     userHidWaitOverlay = true;
     hideWaitOverlay();
     if (typeof window.switchTab === 'function') window.switchTab('vpn');
     else document.querySelector('.nav-item[data-tab="vpn"]')?.click();
     refreshStatus(false);
-    appendLog('VPN tab open. Server changes continue in the background.');
   });
   el.btnDisconnect?.addEventListener('click', async () => {
+    confirmClick('Click received — disconnecting the KnightTrader WireGuard tunnel.');
     await window.kt.vpnDisconnect();
-    appendLog('WireGuard disconnected.');
+    confirmClick('WireGuard disconnected.');
     await refreshStatus(false);
+  });
+
+  window.kt.onSignupStepDone(async (payload) => {
+    const type = payload?.type;
+    if (type !== 'proton' && type !== 'protonLogin') return;
+    userHidWaitOverlay = true;
+    hideWaitOverlay();
+    if (typeof window.switchTab === 'function') window.switchTab('vpn');
+    const message = payload?.message || (type === 'proton'
+      ? 'Create Proton account closed. Enter that email and password, then click Continue — connect.'
+      : 'Sign-in closed. Enter that Proton email and password, then click Continue — connect.');
+    confirmClick(message);
+    try {
+      const creds = await window.kt.getCredentials();
+      if (creds?.proton?.email && el.tabEmail && !el.tabEmail.value) el.tabEmail.value = creds.proton.email;
+    } catch (_) {}
+    el.tabEmail?.focus();
   });
 
   window.kt.onVpnOnboardingStatus((payload) => {
@@ -387,6 +455,10 @@
     try {
       const state = await window.kt.getOnboardingState();
       usNoticeShown = !!state?.usVpnNoticeShown;
+    } catch (_) {}
+    try {
+      const creds = await window.kt.getCredentials();
+      if (creds?.proton?.email && el.tabEmail && !el.tabEmail.value) el.tabEmail.value = creds.proton.email;
     } catch (_) {}
     await refreshStatus(false);
     await buildCountryGrid();
