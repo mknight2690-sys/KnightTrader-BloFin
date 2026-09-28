@@ -110,9 +110,21 @@ async function downloadFileToPath(url, dest) {
   return downloadFileWithProgress(url, dest, null);
 }
 
+function getUpdateDownloadDir() {
+  const dir = path.join(os.tmpdir(), 'knighttrader-updates');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function sleepMs(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 async function downloadFileWithProgress(url, dest, onProgress) {
-  return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(dest);
+  const part = `${dest}.part`;
+  try { if (fs.existsSync(part)) fs.unlinkSync(part); } catch (_) {}
+  await new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(part);
     const follow = (streamUrl) => {
       const proto = streamUrl.protocol === 'http:' ? http : https;
       proto.get(streamUrl, (res) => {
@@ -136,13 +148,34 @@ async function downloadFileWithProgress(url, dest, onProgress) {
         res.on('error', reject);
         file.on('error', reject);
         file.on('finish', () => {
-          file.close();
-          resolve(dest);
+          file.close((err) => (err ? reject(err) : resolve()));
         });
       }).on('error', reject);
     };
     follow(new URL(url));
   });
+  try { if (fs.existsSync(dest)) fs.unlinkSync(dest); } catch (_) {}
+  fs.renameSync(part, dest);
+  return dest;
+}
+
+async function prepareInstallerForRun(sourcePath) {
+  const src = path.resolve(sourcePath);
+  if (!fs.existsSync(src)) throw new Error(`Installer not found: ${src}`);
+  const runDir = path.join(os.tmpdir(), 'knighttrader-run');
+  fs.mkdirSync(runDir, { recursive: true });
+  const dest = path.join(runDir, `KnightTrader-Blofin-Setup-run-${Date.now()}.exe`);
+  let lastErr = null;
+  for (let i = 0; i < 6; i += 1) {
+    try {
+      await fs.promises.copyFile(src, dest);
+      return dest;
+    } catch (e) {
+      lastErr = e;
+      await sleepMs(1200 * (i + 1));
+    }
+  }
+  throw lastErr || new Error('Could not stage installer for run');
 }
 function broadcastUpdate(channel, payload) {
   // Only the main renderer has the preload bridge that listens for these
@@ -226,12 +259,8 @@ async function fallbackDirectDownload(version) {
   const tag = `v${ver}`;
   const fileName = `KnightTrader-Blofin-Setup-${ver}.exe`;
   const url = `https://github.com/${UPDATE_OWNER}/${UPDATE_REPO}/releases/download/${tag}/${fileName}`;
-  const destDir = path.join(app.getPath('userData'), 'pending-update');
-  fs.mkdirSync(destDir, { recursive: true });
-  const dest = path.join(destDir, fileName);
-  if (fs.existsSync(dest)) {
-    try { fs.unlinkSync(dest); } catch (_) {}
-  }
+  const destDir = getUpdateDownloadDir();
+  const dest = path.join(destDir, `KnightTrader-Blofin-Setup-${ver}-${Date.now()}.exe`);
   appendLog(`⬇ Direct download from GitHub: ${fileName}`, 'info');
   await downloadFileWithProgress(url, dest, (percent) => {
     broadcastUpdate('update-download-progress', { percent: Math.round(percent) });
@@ -271,10 +300,14 @@ function reportStuckUpdateIfNeeded() {
       downloadedInstallerPath = null;
       updateDownloadUsedFallback = false;
       try {
-        const pendingDir = path.join(userData, 'pending-update');
-        if (fs.existsSync(pendingDir)) {
-          for (const f of fs.readdirSync(pendingDir)) {
-            try { fs.unlinkSync(path.join(pendingDir, f)); } catch (_) {}
+        for (const dir of [
+          path.join(userData, 'pending-update'),
+          getUpdateDownloadDir(),
+          path.join(os.tmpdir(), 'knighttrader-run'),
+        ]) {
+          if (!fs.existsSync(dir)) continue;
+          for (const f of fs.readdirSync(dir)) {
+            try { fs.unlinkSync(path.join(dir, f)); } catch (_) {}
           }
         }
       } catch (_) {}
@@ -396,37 +429,49 @@ async function beginSilentUpdateInstall() {
   if (updateInstallInProgress) return;
   updateInstallInProgress = true;
   isQuittingForUpdate = true;
-  const targetVer = normalizeVersion(updateDownloadedInfo?.version || pendingRemoteVersion || '');
-  appendLog(`🔄 Shutting down to install v${targetVer || 'update'}…`, 'info');
-  const userData = app.getPath('userData');
   try {
-    fs.writeFileSync(
-      path.join(userData, 'kt-installing.lock'),
-      JSON.stringify({ at: Date.now(), target: targetVer }),
-      'utf8'
-    );
-  } catch (_) {}
-  if (targetVer) {
-    try { fs.writeFileSync(path.join(userData, 'kt-pending-version.txt'), targetVer, 'utf8'); } catch (_) {}
+    const targetVer = normalizeVersion(updateDownloadedInfo?.version || pendingRemoteVersion || '');
+    appendLog(`🔄 Shutting down to install v${targetVer || 'update'}…`, 'info');
+    const userData = app.getPath('userData');
+    try {
+      fs.writeFileSync(
+        path.join(userData, 'kt-installing.lock'),
+        JSON.stringify({ at: Date.now(), target: targetVer }),
+        'utf8'
+      );
+    } catch (_) {}
+    if (targetVer) {
+      try { fs.writeFileSync(path.join(userData, 'kt-pending-version.txt'), targetVer, 'utf8'); } catch (_) {}
+    }
+
+    await shutdownAllServicesForInstall();
+
+    try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch (_) {}
+    try { app.releaseSingleInstanceLock(); } catch (_) {}
+
+    const installer = downloadedInstallerPath || updateDownloadedInfo?.downloadedFile;
+    if (process.platform === 'win32' && installer && fs.existsSync(installer)) {
+      let runInstaller = installer;
+      try {
+        runInstaller = await prepareInstallerForRun(installer);
+        appendLog(`🔄 Installer staged: ${path.basename(runInstaller)}`, 'info');
+      } catch (e) {
+        appendLog(`⚠ Installer staging failed (${e?.message || e}) — using download path`, 'warn');
+      }
+      appendLog(`🔄 Running silent installer → ${getInstallDir()}`, 'info');
+      spawnUpdateRunner(runInstaller);
+      setTimeout(() => { try { app.exit(0); } catch (_) {} }, 1500).unref?.();
+      return;
+    }
+
+    autoUpdater.quitAndInstall(true, true);
+    setTimeout(() => { try { app.exit(0); } catch (_) {} }, 8000).unref?.();
+  } catch (e) {
+    updateInstallInProgress = false;
+    isQuittingForUpdate = false;
+    appendLog(`⚠ Update install aborted: ${e?.message || e}`, 'warn');
+    broadcastUpdate('update-error', e);
   }
-
-  await shutdownAllServicesForInstall();
-
-  // Detached relaunch loop waits for the installer process to exit, then
-  // retries START.bat. Must spawn AFTER the installer, never before it.
-  try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
-  try { app.releaseSingleInstanceLock(); } catch (_) {}
-
-  const installer = downloadedInstallerPath || updateDownloadedInfo?.downloadedFile;
-  if (process.platform === 'win32' && installer && fs.existsSync(installer)) {
-    appendLog(`🔄 Running silent installer: ${path.basename(installer)} → ${getInstallDir()}`, 'info');
-    spawnUpdateRunner(installer);
-    setTimeout(() => { try { app.exit(0); } catch (_) {} }, 1500).unref?.();
-    return;
-  }
-
-  autoUpdater.quitAndInstall(true, true);
-  setTimeout(() => { try { app.exit(0); } catch (_) {} }, 8000).unref?.();
 }
 
 async function waitForDownloadedUpdate(timeoutMs = 180000) {
@@ -455,7 +500,9 @@ function scheduleAutoInstall(delayMs = AUTO_INSTALL_DELAY_MS) {
       return;
     }
     appendLog('🔄 Auto-restarting to install update…', 'success');
-    await beginSilentUpdateInstall();
+    beginSilentUpdateInstall().catch((e) => {
+      appendLog(`⚠ Auto-install failed: ${e?.message || e}`, 'warn');
+    });
   }, delayMs).unref?.();
 }
 
