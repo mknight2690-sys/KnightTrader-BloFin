@@ -53,7 +53,7 @@ function buildNewUserNotify(ipInfo, cycle) {
     cycle,
     ipInfo,
     blocked: BLOCKED_COUNTRIES.has(code) || (code && !vpn.isAllowedCountry(code)),
-    notifyUser: true,
+    notifyUser: cycle === 1,
     steps: [
       'The ProtonVPN desktop app will open (not a browser — use the app window).',
       'First time only: sign in with your free Proton account and complete CAPTCHA in the signup popup if you have not yet.',
@@ -150,12 +150,9 @@ async function waitForAllowedCountry({
       message: notify.body,
     });
 
-    if (notify.voice && !voiceDone) {
+    if (notify.voice && !voiceDone && cycle === 1) {
       emitStatus(emit, 'voice', notify.voice, { speak: notify.voice });
       voiceDone = true;
-    } else if (isHardBlocked && cycle % 5 === 0) {
-      const reminder = `Still detecting ${code}. Please connect Proton VPN to Netherlands, Japan, Romania, or Poland.`;
-      emitStatus(emit, 'voice', reminder, { speak: reminder });
     }
 
     emitStatus(emit, 'wrong-country', wrongCountryMessage(ipInfo), { ipInfo, allowed: false, cycle });
@@ -178,9 +175,8 @@ async function waitForAllowedCountry({
       }
     }
 
-    // Re-open ProtonVPN periodically so brand-new users see the app.
-    if (onboarding && (cycle === 1 || cycle % 3 === 0)) {
-      emitStatus(emit, 'cycling', `Attempt ${cycle}: opening ProtonVPN — connect to NL, JP, RO, or PL…`, { ipInfo, cycle });
+    if (onboarding && cycle === 1) {
+      emitStatus(emit, 'cycling', 'Opening ProtonVPN once. Create an account, or sign in if you already have one, then connect to NL, JP, RO, or PL.', { ipInfo, cycle });
       await onboarding.launchProtonApp();
     }
 

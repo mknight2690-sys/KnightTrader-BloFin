@@ -13,7 +13,10 @@
   Sleep 2000
 !macroend
 
-; Post-update relaunch is handled by a detached relaunch-loop.bat spawned
-; from the app AFTER the silent installer starts. Running it here via Exec()
-; deadlocks because the installer is still running during customInstall.
-; Interactive installs still use the finish-page "Run" checkbox.
+; Launch a detached waiter. It returns immediately so NSIS does not block,
+; then starts the app only after this installer process has exited.
+!macro customInstall
+  IfFileExists "$INSTDIR\relaunch-after.bat" 0 kt_no_relaunch
+    Exec '"$WINDIR\System32\cmd.exe" /c start "" /MIN "$INSTDIR\relaunch-after.bat" "$INSTDIR"'
+  kt_no_relaunch:
+!macroend

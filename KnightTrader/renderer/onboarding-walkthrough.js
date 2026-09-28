@@ -23,6 +23,7 @@
     btnVpnAuto: $('btn-vpn-auto-setup'),
     btnVpnCheck: $('btn-vpn-check'),
     btnSignupProton: $('btn-signup-proton'),
+    btnSigninProton: $('btn-signin-proton'),
     btnSignupProtonMail: $('btn-signup-proton-mail'),
     btnSignupGmail: $('btn-signup-gmail'),
     btnSignupDownloads: $('btn-signup-proton-downloads'),
@@ -102,7 +103,7 @@
       secondary: null,
       form: false,
     },
-    protonAccount: { title: 'Create @proton.me email', text: 'Free email for BloFin + VPN. Complete CAPTCHA in the popup, then Done.', primary: 'Open Proton signup', secondary: 'Skip — have Proton', form: false, popup: 'proton' },
+    protonAccount: { title: 'Proton account', text: 'Create a free Proton account, or sign in if you already have Proton VPN. Complete CAPTCHA in the popup, then Done.', primary: 'Create Proton account', secondary: 'Sign in to existing Proton VPN', form: false, popup: 'proton', secondaryPopup: 'protonLogin' },
     protonMail: { title: 'Verify Proton email', text: 'Open Proton Mail, click the verification link, then Done.', primary: 'Open Proton Mail', secondary: 'Skip — verified', form: false, popup: 'protonMail' },
     protonSave: { title: 'Save Proton login', text: 'Enter your @proton.me and password — stored encrypted on this PC.', primary: 'Save & continue', secondary: null, form: 'proton' },
     vpn: { title: 'Connect VPN', text: 'Installs WireGuard + ProtonVPN and connects to a free BloFin-allowed country.', primary: 'Install & connect VPN', secondary: 'Skip — not needed', form: false },
@@ -379,7 +380,15 @@
   });
 
   el.btnPrimary?.addEventListener('click', () => runPrimaryAction());
-  el.btnSecondary?.addEventListener('click', () => skipCurrentStep());
+  el.btnSecondary?.addEventListener('click', () => {
+    const copy = STEP_COPY[currentStepId()];
+    if (copy?.secondaryPopup) {
+      openSignup(copy.secondaryPopup);
+      window.kt.vpnOpenProtonApp?.();
+      return;
+    }
+    skipCurrentStep();
+  });
   el.btnSkip?.addEventListener('click', () => finishWalkthrough(false));
   el.btnRerunWizard?.addEventListener('click', async () => {
     lastChecklist = await window.kt.getOnboardingChecklist();
@@ -392,6 +401,10 @@
   });
   el.btnVpnAuto?.addEventListener('click', () => window.kt.vpnEnsureRoute({ preferredCountry: el.vpnCountry?.value || 'random' }));
   el.btnSignupProton?.addEventListener('click', () => openSignup('proton'));
+  el.btnSigninProton?.addEventListener('click', () => {
+    openSignup('protonLogin');
+    window.kt.vpnOpenProtonApp?.();
+  });
   el.btnSignupProtonMail?.addEventListener('click', () => openSignup('protonMail'));
   el.btnSignupGmail?.addEventListener('click', () => openSignup('gmail'));
   el.btnSignupDownloads?.addEventListener('click', () => openSignup('protonDownloads'));

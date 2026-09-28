@@ -807,6 +807,8 @@
           <button type="button" id="btn-vpn-tab-ensure" class="btn-primary">Ensure BloFin route</button>
           <button type="button" id="btn-vpn-tab-verify" class="btn-secondary">Verify now</button>
           <button type="button" id="btn-vpn-tab-proton" class="btn-secondary">Open ProtonVPN</button>
+          <button type="button" id="btn-vpn-tab-signin" class="btn-secondary">Sign in to existing Proton</button>
+          <button type="button" id="btn-vpn-tab-create" class="btn-secondary">Create Proton account</button>
           <button type="button" id="btn-vpn-tab-disconnect" class="btn-ghost">Disconnect WireGuard</button>
         </div>
 
@@ -902,6 +904,7 @@
             </div>
             <div class="vpn-onboard-signup-row">
               <button type="button" id="btn-signup-proton" class="btn-secondary">Create @proton.me email ↗</button>
+              <button type="button" id="btn-signin-proton" class="btn-secondary">Sign in to existing Proton VPN ↗</button>
               <button type="button" id="btn-signup-proton-mail" class="btn-secondary">Open Proton Mail ↗</button>
               <button type="button" id="btn-signup-gmail" class="btn-secondary">Create Gmail (optional) ↗</button>
               <button type="button" id="btn-signup-blofin" class="btn-secondary">Create BloFin Account ↗</button>
@@ -1353,8 +1356,10 @@
         </ol>
         <p id="vpn-wait-cycle" class="vpn-wait-cycle">Auto-check #1 in progress…</p>
         <div class="first-run-actions">
-          <button type="button" id="vpn-wait-open-proton" class="btn-primary">Open ProtonVPN</button>
-          <button type="button" id="vpn-wait-show-tab" class="btn-secondary">View VPN tab</button>
+          <button type="button" id="vpn-wait-create" class="btn-primary">Create Proton account</button>
+          <button type="button" id="vpn-wait-signin" class="btn-secondary">Sign in to existing Proton VPN</button>
+          <button type="button" id="vpn-wait-open-proton" class="btn-secondary">Open ProtonVPN</button>
+          <button type="button" id="vpn-wait-show-tab" class="btn-ghost">View VPN tab</button>
         </div>
         <p class="vpn-wait-footnote muted">Do not trade until this message goes away and the VPN tab shows green.</p>
       </div>

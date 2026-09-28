@@ -893,6 +893,7 @@ const DEFAULTS = {
     firstRunComplete: false,
     vpnVerified: false,
     protonVpnAutoconnect: false,
+    usVpnNoticeShown: false,
     preferredVpnCountry: 'NL',
     disclaimerSeen: false,
     setupComplete: false,
@@ -1055,6 +1056,7 @@ const SIGNUP_URLS = {
   proton: 'https://account.proton.me/signup?product=mail&plan=free',
   protonvpn: 'https://account.protonvpn.com/signup',
   protonMail: 'https://mail.proton.me/',
+  protonLogin: 'https://account.proton.me/login',
   protonMailLogin: 'https://account.proton.me/login',
   protonDownloads: 'https://account.protonvpn.com/downloads',
   gmail: 'https://accounts.google.com/signup',
@@ -1078,6 +1080,7 @@ const SIGNUP_TITLES = {
   proton: 'Create Proton account — pick your @proton.me email',
   protonvpn: 'Create Proton VPN account',
   protonMail: 'Proton Mail — verify email & read BloFin messages',
+  protonLogin: 'Sign in to existing Proton VPN account',
   protonMailLogin: 'Sign in to Proton Mail',
   protonDownloads: 'Download Proton VPN configs',
   gmail: 'Create Gmail address (optional)',
@@ -1118,11 +1121,13 @@ const SIGNUP_HINTS = {
   nousSubscription: 'Choose Free $0 plan if needed. Done.',
   nousBilling: 'Add at least $5 in credits via Stripe top-up. Done when balance shows $5+.',
   nousApiKeys: 'Create API key named KT Hermes — copy the full key. Done.',
+  protonLogin: 'Sign in with the Proton email and password you already use for Proton VPN. Complete any CAPTCHA or 2FA, then Done. KnightTrader saves this as your VPN account.',
   protonMailLogin: 'Sign in to Proton Mail. Then Done.',
 };
 
 const SIGNUP_ONBOARDING_STEP = {
   proton: 'protonAccount',
+  protonLogin: 'protonAccount',
   protonMail: 'protonMail',
   blofin: 'blofinAccount',
   blofinLogin: 'blofinLogin',
@@ -3543,7 +3548,8 @@ function registerIPC() {
       } catch (_) {}
       const level = payload.step === 'connected' || payload.step === 'ready' ? 'success' : 'info';
       appendLog(`[VPN] ${payload.message || payload.title || payload.step}`, level);
-      if (payload.step === 'user-notify' && payload.notifyUser && Notification.isSupported()) {
+      const noticeOnce = payload.step === 'user-notify' && payload.notifyUser && (payload.cycle || 1) <= 1;
+      if (noticeOnce && !storeData.onboarding?.usVpnNoticeShown && Notification.isSupported()) {
         try {
           const n = new Notification({
             title: String(payload.title || 'VPN setup'),
@@ -3551,6 +3557,8 @@ function registerIPC() {
             silent: false,
           });
           n.show();
+          storeData.onboarding = { ...(storeData.onboarding || {}), usVpnNoticeShown: true };
+          saveStore(storeData);
         } catch (_) {}
       }
       if (payload.speak && process.platform === 'win32') {
@@ -3587,9 +3595,12 @@ function registerIPC() {
   ipcMain.handle('vpn-open-proton-app', async () => {
     const ob = getVpnOnboarding();
     ob.ensureDirs();
-    await ob.installWireGuard();
-    await ob.installProtonVpnApp();
-    return ob.launchProtonApp();
+    const launched = await ob.launchProtonApp();
+    if (launched?.ok) return launched;
+    ob.installProtonVpnApp()
+      .then((res) => { if (res?.ok) return ob.launchProtonApp(); })
+      .catch((e) => appendLog(`⚠ ProtonVPN install: ${e?.message || e}`, 'warn'));
+    return { ok: false, installing: true, error: launched?.error || 'ProtonVPN is not installed yet. Installing in the background.' };
   });
   ipcMain.handle('vpn-open-signup', (_e, type) => { openSignupWindow(type); return { ok: true }; });
   ipcMain.handle('get-signup-params', () => pendingSignupContext);

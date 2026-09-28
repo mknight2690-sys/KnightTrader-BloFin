@@ -163,11 +163,12 @@ class VpnOnboarding {
   }
 
   async launchProtonApp() {
-    const app = vpn.findProtonVpnApp();
-    if (!app) return { ok: false, error: 'ProtonVPN app not installed' };
-    this.status('proton-ui', 'Opening ProtonVPN — sign in and pick a free server in Netherlands, Japan, Romania, or Poland.');
-    spawn(app, [], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
-    return { ok: true, path: app };
+    const appPath = vpn.findProtonVpnApp();
+    if (!appPath) return { ok: false, error: 'ProtonVPN app not installed' };
+    this.status('proton-ui', 'Opening ProtonVPN. Sign in with an existing account, or create one, then connect to Netherlands, Japan, Romania, or Poland.');
+    const child = spawn(appPath, [], { detached: true, stdio: 'ignore', windowsHide: false });
+    child.unref();
+    return { ok: true, path: appPath };
   }
 
   stopGeoPoll() {

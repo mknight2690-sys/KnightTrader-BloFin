@@ -102,6 +102,23 @@ async function getExternalIpInfo() {
 
 // --- Backend detection -----------------------------------------------------
 
+function findProtonExeUnder(dir, depth) {
+  if (!dir || depth < 0 || !fs.existsSync(dir)) return null;
+  let entries = [];
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return null; }
+  const preferred = ['ProtonVPN.Launcher.exe', 'ProtonVPN.Client.exe', 'ProtonVPN.exe'];
+  for (const name of preferred) {
+    if (entries.some((e) => e.isFile() && e.name === name)) return path.join(dir, name);
+  }
+  if (depth === 0) return null;
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const found = findProtonExeUnder(path.join(dir, entry.name), depth - 1);
+    if (found) return found;
+  }
+  return null;
+}
+
 function findWireGuard() {
   if (process.platform === 'win32') {
     const candidates = [
@@ -119,12 +136,29 @@ function findWireGuard() {
 
 function findProtonVpnApp() {
   if (process.platform === 'win32') {
+    const pf = process.env['ProgramFiles'] || 'C:\\Program Files';
+    const pf86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+    const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
     const candidates = [
-      path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Proton', 'ProtonVPN', 'ProtonVPN.exe'),
-      path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Proton', 'ProtonVPN', 'ProtonVPN.exe'),
-      path.join(os.homedir(), 'AppData', 'Local', 'ProtonVPN', 'ProtonVPN.exe'),
+      path.join(pf, 'Proton', 'VPN', 'ProtonVPN.Launcher.exe'),
+      path.join(pf, 'Proton', 'VPN', 'ProtonVPN.exe'),
+      path.join(pf86, 'Proton', 'VPN', 'ProtonVPN.Launcher.exe'),
+      path.join(pf, 'Proton', 'ProtonVPN', 'ProtonVPN.exe'),
+      path.join(pf86, 'Proton', 'ProtonVPN', 'ProtonVPN.exe'),
+      path.join(local, 'ProtonVPN', 'ProtonVPN.exe'),
+      path.join(local, 'Programs', 'Proton', 'VPN', 'ProtonVPN.Launcher.exe'),
     ];
-    return candidates.find((p) => fs.existsSync(p)) || null;
+    const direct = candidates.find((p) => fs.existsSync(p));
+    if (direct) return direct;
+    const roots = [
+      path.join(pf, 'Proton', 'VPN'),
+      path.join(local, 'Proton'),
+    ];
+    for (const root of roots) {
+      const found = findProtonExeUnder(root, 3);
+      if (found) return found;
+    }
+    return null;
   }
   const macPath = '/Applications/ProtonVPN.app';
   return fs.existsSync(macPath) ? macPath : null;
