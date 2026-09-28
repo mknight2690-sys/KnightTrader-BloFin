@@ -24,6 +24,7 @@
   IfSilent kt_silent_relaunch kt_skip_relaunch
   kt_silent_relaunch:
     SetOutPath "$INSTDIR"
-    Exec '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" --updated'
+    ; Retry START.bat until the app process + kt-relaunch-ok.flag confirm startup.
+    Exec '"$INSTDIR\relaunch-loop.bat" "$INSTDIR" 0'
   kt_skip_relaunch:
 !macroend

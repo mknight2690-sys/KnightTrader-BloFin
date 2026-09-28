@@ -268,89 +268,56 @@ function psEscape(value) {
   return String(value).replace(/'/g, "''");
 }
 
+function getInstallDir() {
+  return path.dirname(process.execPath);
+}
+
+function ensureRelaunchScripts() {
+  const installDir = getInstallDir();
+  const exeName = getAppExecutableFileName();
+  const startBat = path.join(installDir, 'START.bat');
+  const loopBat = path.join(installDir, 'relaunch-loop.bat');
+  const startContent = `@echo off\r\nREM KnightTrader BloFin — launch installed app\r\ncd /d "%~dp0"\r\nstart "" "%~dp0${exeName}" --updated\r\nexit /b 0\r\n`;
+  try {
+    if (!fs.existsSync(startBat)) fs.writeFileSync(startBat, startContent, 'utf8');
+  } catch (_) {}
+  const bundledLoop = path.join(__dirname, 'relaunch-loop.bat');
+  try {
+    if (fs.existsSync(bundledLoop) && !fs.existsSync(loopBat)) {
+      fs.copyFileSync(bundledLoop, loopBat);
+    }
+  } catch (_) {}
+  return { installDir, startBat, loopBat };
+}
+
 function spawnRelaunchSentinel() {
   try {
-    const exePath = process.execPath;
-    if (!exePath) return;
-    const scriptPath = path.join(os.tmpdir(), 'knighttrader-relaunch.ps1');
+    if (process.platform !== 'win32') return;
+    const { installDir, loopBat } = ensureRelaunchScripts();
     const logPath = path.join(os.tmpdir(), 'knighttrader-relaunch.log');
-    const setupPrefix = getInstallerProcessPrefix();
-    // Write the script as one template literal — never embed PowerShell
-    // quotes inside JS single-quoted strings ('' breaks JS parsing).
-    const script = `$ErrorActionPreference = 'Continue'
-$log = '${psEscape(logPath)}'
-$oldPid = ${Number(process.pid) || 0}
-$exe = '${psEscape(exePath)}'
-$setupPrefix = '${psEscape(setupPrefix)}'
-function Log([string]$m) {
-  Add-Content -LiteralPath $log -Value ((Get-Date -Format o) + ' ' + $m)
-}
-function InstallerRunning {
-  $pat = $setupPrefix + '*'
-  return @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like $pat }).Length -gt 0
-}
-Log 'sentinel-start'
-$deadline = (Get-Date).AddSeconds(180)
-while ((Get-Date) -lt $deadline) {
-  if (-not (Get-Process -Id $oldPid -ErrorAction SilentlyContinue)) { break }
-  Start-Sleep -Milliseconds 400
-}
-Log 'old-pid-gone'
-Start-Sleep -Seconds 4
-$procName = [System.IO.Path]::GetFileNameWithoutExtension($exe)
-if (@(Get-Process -Name $procName -ErrorAction SilentlyContinue).Length -gt 0) {
-  Log 'already-running-after-install'
-  exit 0
-}
-$seen = $false
-$appearBy = (Get-Date).AddSeconds(90)
-while ((Get-Date) -lt $appearBy) {
-  if (InstallerRunning) { $seen = $true; break }
-  Start-Sleep -Milliseconds 500
-}
-Log ('installer-seen=' + $seen)
-if ($seen) {
-  $doneBy = (Get-Date).AddMinutes(6)
-  while ((Get-Date) -lt $doneBy) {
-    if (-not (InstallerRunning)) { break }
-    Start-Sleep -Seconds 1
-  }
-  Log 'installer-gone'
-} else {
-  Start-Sleep -Seconds 6
-}
-Start-Sleep -Seconds 2
-for ($i = 0; $i -lt 20; $i++) {
-  if (InstallerRunning) {
-    Start-Sleep -Seconds 2
-    continue
-  }
-  try {
-    $p = Start-Process -FilePath $exe -ArgumentList '--updated' -PassThru -ErrorAction Stop
-    Start-Sleep -Seconds 5
-    if ($p -and -not $p.HasExited) {
-      Log ('running pid=' + $p.Id)
-      exit 0
+    try {
+      fs.unlinkSync(path.join(app.getPath('userData'), 'kt-relaunch-ok.flag'));
+    } catch (_) {}
+    let loopPath = loopBat;
+    if (!fs.existsSync(loopPath)) {
+      loopPath = path.join(os.tmpdir(), 'knighttrader-relaunch-loop.bat');
+      const bundledLoop = path.join(__dirname, 'relaunch-loop.bat');
+      if (fs.existsSync(bundledLoop)) fs.copyFileSync(bundledLoop, loopPath);
     }
-    Log ('exited-fast attempt=' + $i)
-  } catch {
-    Log ('start-failed attempt=' + $i + ' ' + $_.Exception.Message)
-  }
-  Start-Sleep -Seconds 3
-}
-Log 'gave-up'
-`;
-    fs.writeFileSync(scriptPath, script, 'utf8');
-    // `start` ShellExecutes a new process outside Electron's job object, so
-    // it survives app.quit()/app.exit().
+    if (!fs.existsSync(loopPath)) {
+      appendLog('⚠ Relaunch loop script missing — cannot arm retry start', 'warn');
+      return;
+    }
+    const oldPid = Number(process.pid) || 0;
+    // `start` ShellExecutes outside Electron's job object so the loop survives quit.
     const child = spawn('cmd.exe', [
       '/d', '/c',
-      `start "" /MIN powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${scriptPath}"`,
+      `start "" /MIN "${loopPath}" "${installDir}" ${oldPid}`,
     ], { detached: true, stdio: 'ignore', windowsHide: true });
     child.unref();
-    appendLog(`🔁 Relaunch sentinel armed — log: ${logPath}`, 'info');
+    appendLog(`🔁 Relaunch loop armed (START.bat retry) — log: ${logPath}`, 'info');
   } catch (e) {
-    appendLog(`⚠ Relaunch sentinel failed: ${e?.message || e}`, 'warn');
+    appendLog(`⚠ Relaunch loop failed: ${e?.message || e}`, 'warn');
   }
 }
 
@@ -3742,24 +3709,24 @@ function attachBhProtocol(ses) {
 const PID_FILE = path.join(app.getPath('userData'), 'kt-instance.pid');
 
 function forceKillExistingInstance() {
-  // Post-update relaunch must not taskkill sibling instances — that race
-  // kills the freshly installed app when sentinel and NSIS both relaunch.
+  // Post-update relaunch must not taskkill anything — the retry loop may
+  // have already started a fresh instance while we are still starting up.
   if (!IS_POST_UPDATE_LAUNCH) {
     killOtherAppInstances();
-  }
-  try {
-    if (fs.existsSync(PID_FILE)) {
-      const pid = fs.readFileSync(PID_FILE, 'utf8').trim();
-      if (pid && pid !== String(process.pid)) {
-        try {
-          execSync(`taskkill /F /PID ${pid} /T`, { timeout: 10000, stdio: 'ignore', windowsHide: true });
-          appendLog('Terminated existing instance (PID ' + pid + ')', 'success');
-        } catch (e) {
-          try { appendLog('Could not kill PID ' + pid + ': ' + e.message, 'warn'); } catch {}
+    try {
+      if (fs.existsSync(PID_FILE)) {
+        const pid = fs.readFileSync(PID_FILE, 'utf8').trim();
+        if (pid && pid !== String(process.pid)) {
+          try {
+            execSync(`taskkill /F /PID ${pid} /T`, { timeout: 10000, stdio: 'ignore', windowsHide: true });
+            appendLog('Terminated existing instance (PID ' + pid + ')', 'success');
+          } catch (e) {
+            try { appendLog('Could not kill PID ' + pid + ': ' + e.message, 'warn'); } catch {}
+          }
         }
       }
-    }
-  } catch (_) {}
+    } catch (_) {}
+  }
   if (IS_POST_UPDATE_LAUNCH) {
     try {
       fs.unlinkSync(path.join(app.getPath('userData'), 'kt-installing.lock'));
@@ -3959,6 +3926,13 @@ app.whenReady().then(async () => {
   });
   createWindow();
   buildTray();
+  try {
+    fs.writeFileSync(
+      path.join(app.getPath('userData'), 'kt-relaunch-ok.flag'),
+      String(Date.now()),
+      'utf8'
+    );
+  } catch (_) {}
   if (IS_POST_UPDATE_LAUNCH) {
     appendLog(`✅ Updated to v${app.getVersion()} — app relaunched successfully.`, 'success');
   }
@@ -4016,6 +3990,7 @@ app.whenReady().then(async () => {
   });
 });
 app.on('window-all-closed', () => {
+  if (isQuittingForUpdate) return;
   if (process.platform !== 'darwin') app.quit();
 });
 // Force-quit safety net for updates: if any window survives the close
