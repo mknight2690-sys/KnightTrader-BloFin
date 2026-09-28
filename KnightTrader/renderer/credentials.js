@@ -51,6 +51,10 @@
 
   el.saveBtn?.addEventListener('click', () => saveAccountCredentials());
 
+  $('btn-paste-blofin-api')?.addEventListener('click', () => window.kt.openBlofinPaste());
+  $('btn-signup-blofin-login')?.addEventListener('click', () => window.kt.vpnOpenSignup('blofinLogin'));
+  $('btn-signup-blofin-api')?.addEventListener('click', () => window.kt.vpnOpenSignup('blofinApi'));
+
   window.initCredentialsTab = () => {
     loadAccountCredentials();
   };

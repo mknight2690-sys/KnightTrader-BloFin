@@ -285,7 +285,10 @@
                   <li>If VPN is needed: <strong>Install &amp; connect VPN</strong> — pick a free server in <strong>Netherlands, Japan, Romania, or Poland</strong>.</li>
                   <li><strong>BloFin signup</strong> popup — register using your @proton.me address.</li>
                   <li><strong>Proton Mail</strong> popup again — open BloFin’s verification email and click the link.</li>
-                  <li>Save your BloFin account email on the <strong>Credentials</strong> tab.</li>
+                  <li>Save your BloFin account email in the wizard.</li>
+                  <li><strong>BloFin login</strong> popup → sign in.</li>
+                  <li><strong>API Management</strong> popup → create API key (Read + Compendium + Trade + Passphrase).</li>
+                  <li><strong>Paste API Keys</strong> popup — paste all three values once, click <strong>Done — save credentials</strong>.</li>
                 </ol>
                 <div class="step-desc"><strong>If you skipped the wizard:</strong> open the <strong>Credentials</strong> tab anytime — use <strong>Re-run setup wizard</strong> or the VPN assistant buttons there.</div>
                 <div class="step-desc">If <strong>blofin.com</strong> already works without VPN in your country, the wizard skips VPN steps. Do not turn VPN on unnecessarily — extra hops can cause login issues.</div>
@@ -375,12 +378,11 @@
               <div class="step-num">8</div>
               <div class="step-body">
                 <div class="step-title">Create Blofin API keys</div>
-                <div class="step-desc">The app needs three values: API Key, Secret Key, and Passphrase. The file loader can also read them from a text file.</div>
-                <div class="step-desc"><strong>Click by click:</strong></div>
+                <div class="step-desc">Use the in-app wizard or <strong>Credentials</strong> tab: <strong>BloFin Login</strong> → <strong>BloFin API Keys</strong> popups, then <strong>Paste API Keys</strong> — one paste, Done saves everything.</div>
+                <div class="step-desc"><strong>Click by click (or use in-app popups):</strong></div>
                 <ol class="howto-list">
-                  <li>Sign in to <strong>blofin.com</strong> (with VPN on if you needed step 5).</li>
-                  <li>Click your profile icon or avatar (top right).</li>
-                  <li>Open <strong>API Management</strong>, <strong>API</strong>, or <strong>API Keys</strong> from the menu.</li>
+                  <li>On <strong>Credentials</strong>, click <strong>BloFin Login</strong> and sign in (VPN on if you needed step 5).</li>
+                  <li>Click <strong>BloFin API Keys</strong> — opens API Management in a popup.</li>
                   <li>Click <strong>Create API key</strong> or <strong>New API key</strong>.</li>
                   <li>Name the key something simple like <strong>KT Hermes</strong> so you remember what it is for.</li>
                   <li>Set permissions: enable <strong>Read</strong> if shown separately.</li>
@@ -391,10 +393,9 @@
                   <li>Create a strong <strong>Passphrase</strong> when prompted — write it on your notepad immediately.</li>
                   <li>Click <strong>Confirm</strong> / <strong>Create</strong> and complete any 2FA Blofin requires.</li>
                   <li>Blofin shows the <strong>API Key</strong> and <strong>Secret Key</strong> once — copy both before closing the dialog.</li>
-                  <li>Paste all three values into your notepad temporarily so you do not lose them.</li>
-                  <li>Open KnightTrader BloFin → <strong>Setup</strong> tab → <strong>Blofin Credentials</strong> section.</li>
-                  <li>Paste into <strong>API Key</strong>, <strong>Secret Key</strong>, and <strong>Passphrase</strong> fields (no extra spaces).</li>
-                  <li>Alternatively, save the three lines in a text file and click <strong>Load from file…</strong> to import.</li>
+                  <li>Copy all three values, then click <strong>Paste API Keys</strong> on the Credentials tab (or finish the wizard paste step).</li>
+                  <li>Paste the block once in the popup and click <strong>Done — save credentials</strong> — keys save encrypted and compendium is written automatically.</li>
+                  <li>Alternatively: <strong>Setup</strong> tab fields, or <strong>Load from file…</strong> for a compendium text file.</li>
                   <li>Confirm <strong>LIVE</strong> mode is selected (not demo) unless you intentionally use demo trading.</li>
                   <li>Click <strong>Test Blofin Credentials</strong> once and wait — do not double-click.</li>
                   <li>Read the result: green success means keys work; red error tells you which field failed.</li>
@@ -819,10 +820,13 @@
               <button type="button" id="btn-signup-proton" class="btn-secondary">Create @proton.me email ↗</button>
               <button type="button" id="btn-signup-proton-mail" class="btn-secondary">Open Proton Mail ↗</button>
               <button type="button" id="btn-signup-gmail" class="btn-secondary">Create Gmail (optional) ↗</button>
-              <button type="button" id="btn-signup-proton-downloads" class="btn-secondary">Proton VPN Configs ↗</button>
               <button type="button" id="btn-signup-blofin" class="btn-secondary">Create BloFin Account ↗</button>
+              <button type="button" id="btn-signup-blofin-login" class="btn-secondary">BloFin Login ↗</button>
+              <button type="button" id="btn-signup-blofin-api" class="btn-secondary">BloFin API Keys ↗</button>
+              <button type="button" id="btn-paste-blofin-api" class="btn-primary">Paste API Keys ↗</button>
+              <button type="button" id="btn-signup-proton-downloads" class="btn-secondary">Proton VPN Configs ↗</button>
             </div>
-            <p class="vpn-onboard-note">Email flow: create <strong>@proton.me</strong> → verify in <strong>Proton Mail</strong> popup → register on <strong>BloFin</strong> with that address → verify BloFin email in Proton Mail. Click <strong>Done — continue</strong> after each popup.</p>
+            <p class="vpn-onboard-note">Full flow: <strong>@proton.me</strong> → Proton Mail verify → BloFin signup → BloFin login → <strong>API Management</strong> popup → <strong>Paste API Keys</strong> popup (one paste, Done saves everything). Click <strong>Done — continue</strong> after each browser popup.</p>
             <div id="vpn-status" class="vpn-onboard-log"></div>
           </div>
         </div>
@@ -1225,7 +1229,7 @@
         <div class="first-run-badge">First-time setup</div>
         <h2 id="first-run-title">Region &amp; accounts</h2>
         <p id="first-run-lead" class="first-run-lead">KnightTrader checks your location and walks you through free ProtonVPN + BloFin signup — one time only.</p>
-        <div id="first-run-step-label" class="first-run-step-label">Step 1 of 8 — Check location</div>
+        <div id="first-run-step-label" class="first-run-step-label">Step 1 of 11 — Check location</div>
         <div id="first-run-body" class="first-run-body">
           <p id="first-run-text">We need to know if BloFin is available in your country. Some regions require a free VPN first.</p>
           <div id="first-run-creds" class="first-run-creds hidden">

@@ -26,13 +26,16 @@
     btnSignupGmail: $('btn-signup-gmail'),
     btnSignupDownloads: $('btn-signup-proton-downloads'),
     btnSignupBlofin: $('btn-signup-blofin'),
+    btnSignupBlofinLogin: $('btn-signup-blofin-login'),
+    btnSignupBlofinApi: $('btn-signup-blofin-api'),
+    btnPasteBlofinApi: $('btn-paste-blofin-api'),
     vpnStatus: $('vpn-status'),
     vpnBanner: $('vpn-onboard-banner'),
     vpnBannerTitle: $('vpn-onboard-banner-title'),
     vpnBannerText: $('vpn-onboard-banner-text'),
   };
 
-  const TOTAL_STEPS = 8;
+  const TOTAL_STEPS = 11;
 
   let wizardStep = 0;
   let lastLocation = null;
@@ -149,8 +152,9 @@
   }
 
   // ── First-run wizard ────────────────────────────────────────────────
-  // 0 location | 1 proton signup (@proton.me) | 2 verify proton mail
-  // 3 save proton | 4 vpn | 5 blofin signup | 6 verify blofin mail | 7 save & finish
+  // 0 location | 1 proton | 2 proton mail | 3 save proton | 4 vpn
+  // 5 blofin signup | 6 blofin mail | 7 save blofin email
+  // 8 blofin login | 9 blofin API create | 10 paste keys | 11 finish
   const STEPS = {
     0: {
       label: stepLabel(1, 'Check location'),
@@ -235,10 +239,10 @@
       secondaryAction() { wizardStep = 7; renderWizard(); },
     },
     7: {
-      label: stepLabel(8, 'Save BloFin email & finish'),
-      text: 'Confirm the email you used on BloFin (usually your @proton.me). API keys come later on the Setup tab.',
-      primary: 'Save & finish',
-      secondary: 'Open Credentials tab',
+      label: stepLabel(8, 'Save BloFin account email'),
+      text: 'Confirm the email you used on BloFin (usually your @proton.me). Next: create API keys in-app.',
+      primary: 'Save & continue',
+      secondary: 'Skip API setup — finish',
       showCreds: 'blofin',
       async action() {
         if (!el.frBlofinEmail?.value?.trim() && !el.frProtonEmail?.value?.trim()) {
@@ -246,9 +250,37 @@
           return;
         }
         await saveWizardCredentials('blofin');
-        await finishFirstRun(true);
+        wizardStep = 8;
+        renderWizard();
       },
-      secondaryAction() { goToCredentialsTab(); finishFirstRun(true); },
+      secondaryAction() { finishFirstRun(true); },
+    },
+    8: {
+      label: stepLabel(9, 'Sign in to BloFin'),
+      text: 'Opens BloFin login in a popup so you can reach API Management. Sign in, then Done — continue.',
+      primary: 'Open BloFin login',
+      secondary: 'Skip — already signed in',
+      showCreds: false,
+      action() { openSignup('blofinLogin'); },
+      secondaryAction() { wizardStep = 9; renderWizard(); },
+    },
+    9: {
+      label: stepLabel(10, 'Create BloFin API keys'),
+      text: 'Opens BloFin API Management. Click Create API key, name it KT Hermes, enable Read + Compendium + Trade, set a Passphrase, and copy all three values. Then Done — continue.',
+      primary: 'Open API Management',
+      secondary: 'I already created keys',
+      showCreds: false,
+      action() { openSignup('blofinApi'); },
+      secondaryAction() { wizardStep = 10; renderWizard(); },
+    },
+    10: {
+      label: stepLabel(11, 'Paste API keys'),
+      text: 'Opens a paste window. Copy API Key, Secret Key, and Passphrase from BloFin in one block, paste once, click Done — credentials save encrypted and compendium is written.',
+      primary: 'Open paste window',
+      secondary: 'Skip — paste later on Setup tab',
+      showCreds: false,
+      action() { window.kt.openBlofinPaste(); },
+      secondaryAction() { finishFirstRun(true); },
     },
   };
 
@@ -300,6 +332,23 @@
         renderWizard();
       }
     }
+    if (type === 'blofinLogin') {
+      if (wizardStep === 8) { wizardStep = 9; renderWizard(); }
+    }
+    if (type === 'blofinApi') {
+      if (wizardStep === 9) {
+        wizardStep = 10;
+        renderWizard();
+        setTimeout(() => window.kt.openBlofinPaste(), 500);
+      }
+    }
+  }
+
+  function handlePasteDone(result) {
+    if (!result?.ok) return;
+    appendSetupLog('BloFin API keys saved from paste.');
+    setStatus(el.status, 'API keys saved and compendium written.', 'ok');
+    if (wizardStep === 10) finishFirstRun(true);
   }
 
   async function finishFirstRun(vpnVerified) {
@@ -352,8 +401,12 @@
   el.btnSignupGmail?.addEventListener('click', () => openSignup('gmail'));
   el.btnSignupDownloads?.addEventListener('click', () => openSignup('protonDownloads'));
   el.btnSignupBlofin?.addEventListener('click', () => openSignup('blofin'));
+  el.btnSignupBlofinLogin?.addEventListener('click', () => openSignup('blofinLogin'));
+  el.btnSignupBlofinApi?.addEventListener('click', () => openSignup('blofinApi'));
+  el.btnPasteBlofinApi?.addEventListener('click', () => window.kt.openBlofinPaste());
 
   window.kt.onSignupStepDone((payload) => handleSignupDone(payload?.type));
+  window.kt.onPasteStepDone((result) => handlePasteDone(result));
 
   window.kt.onVpnOnboardingStatus((payload) => {
     const msg = payload?.message || '';

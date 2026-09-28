@@ -925,6 +925,7 @@ const SIGNUP_URLS = {
   gmail: 'https://accounts.google.com/signup',
   blofin: 'https://blofin.com/register',
   blofinLogin: 'https://blofin.com/login',
+  blofinApi: 'https://blofin.com/account/api',
 };
 const SIGNUP_TITLES = {
   proton: 'Create Proton account — pick your @proton.me email',
@@ -935,6 +936,7 @@ const SIGNUP_TITLES = {
   gmail: 'Create Gmail address (optional)',
   blofin: 'Create BloFin account — use your Proton email',
   blofinLogin: 'Sign in to BloFin',
+  blofinApi: 'Create BloFin API keys',
 };
 const SIGNUP_HINTS = {
   proton: 'Choose a username — that becomes your free @proton.me address (used for BloFin). Complete CAPTCHA, then Done.',
@@ -943,7 +945,8 @@ const SIGNUP_HINTS = {
   blofin: 'Register with your @proton.me email (or Gmail). Complete CAPTCHA, then Done.',
   protonDownloads: 'Download WireGuard configs after signing in. Then Done.',
   protonvpn: 'Create free VPN account if separate from Proton Mail. Then Done.',
-  blofinLogin: 'Sign in to BloFin. Then Done.',
+  blofinLogin: 'Sign in with your BloFin account email and password. Then Done.',
+  blofinApi: 'Click Create API key → name it KT Hermes → enable Read, Compendium, and Trade → set a Passphrase → copy all three values, then open the paste window from the wizard. Done when keys are created.',
   protonMailLogin: 'Sign in to Proton Mail. Then Done.',
 };
 
@@ -986,6 +989,86 @@ function openSignupWindow(type) {
 function notifySignupStepDone(type) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('signup-step-done', { type });
+  }
+}
+
+let pasteWindow = null;
+let pendingPasteContext = { kind: 'blofinApi', title: '', hint: '' };
+
+async function saveBlofinPaste(text) {
+  const parsed = parseCredentialFileContent(String(text || ''));
+  const apiKey = String(parsed.blofin?.apiKey || '').trim();
+  const secretKey = String(parsed.blofin?.secretKey || '').trim();
+  const passphrase = String(parsed.blofin?.passphrase || '').trim();
+  if (!apiKey || !secretKey || !passphrase) {
+    return {
+      ok: false,
+      error: 'Need all three: API Key, Secret Key, and Passphrase. Paste them in one block.',
+    };
+  }
+  storeData.blofin = {
+    ...storeData.blofin,
+    apiKey,
+    secretKey,
+    passphrase,
+    demoMode: parsed.blofin.demoMode ?? storeData.blofin?.demoMode ?? false,
+  };
+  saveStore(storeData);
+  try { await syncBlohunterCredentials(); } catch (e) {
+    appendLog(`⚠ BloHunter sync on paste: ${e.message}`, 'warn');
+  }
+  let compendiumPath = null;
+  try {
+    compendiumPath = writeCompendiumFile();
+    appendLog(`✅ Compendium written from paste: ${compendiumPath}`, 'success');
+  } catch (e) {
+    appendLog(`⚠ Compendium write on paste: ${e.message}`, 'warn');
+  }
+  try {
+    let token = null;
+    if (await probeDashboardPort()) {
+      token = await fetchDashboardSessionToken().catch(() => null);
+    }
+    await syncHermesCredentials(token, { restartGateway: !!token });
+  } catch (e) {
+    appendLog(`⚠ Hermes sync on paste: ${e.message}`, 'warn');
+  }
+  return { ok: true, compendiumPath, blofin: { apiKey, secretKey, passphrase } };
+}
+
+function openPasteWindow(kind = 'blofinApi') {
+  pendingPasteContext = {
+    kind,
+    title: 'Paste BloFin API keys',
+    hint: 'Copy API Key, Secret Key, and Passphrase from BloFin in one block. Click Done — saved encrypted + compendium written.',
+  };
+  const shellPath = path.join(__dirname, 'renderer', 'paste-shell.html');
+  if (pasteWindow && !pasteWindow.isDestroyed()) {
+    pasteWindow.focus();
+    return;
+  }
+  pasteWindow = new BrowserWindow({
+    parent: mainWindow || undefined,
+    width: 560,
+    height: 520,
+    title: pendingPasteContext.title,
+    backgroundColor: '#0b0f14',
+    autoHideMenuBar: true,
+    resizable: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'paste-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+  pasteWindow.loadFile(shellPath);
+  pasteWindow.on('closed', () => { pasteWindow = null; });
+}
+
+function notifyPasteStepDone(result) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('paste-step-done', result || { ok: true });
   }
 }
 
@@ -3222,6 +3305,22 @@ function registerIPC() {
       if (signupWindow && !signupWindow.isDestroyed()) signupWindow.close();
     } catch (_) {}
     notifySignupStepDone(type);
+  });
+  ipcMain.handle('get-paste-params', () => pendingPasteContext);
+  ipcMain.handle('open-blofin-paste', () => { openPasteWindow('blofinApi'); return { ok: true }; });
+  ipcMain.handle('parse-and-save-blofin-paste', (_e, text) => saveBlofinPaste(text));
+  ipcMain.on('paste-done', async (_e, payload) => {
+    const result = await saveBlofinPaste(payload?.text || '');
+    if (!result.ok) {
+      if (pasteWindow && !pasteWindow.isDestroyed()) {
+        pasteWindow.webContents.send('paste-save-error', result.error || 'Save failed');
+      }
+      return;
+    }
+    try {
+      if (pasteWindow && !pasteWindow.isDestroyed()) pasteWindow.close();
+    } catch (_) {}
+    notifyPasteStepDone(result);
   });
   ipcMain.handle('get-onboarding-state', () => storeData.onboarding || DEFAULTS.onboarding);
   ipcMain.handle('set-onboarding-state', (_e, patch) => {

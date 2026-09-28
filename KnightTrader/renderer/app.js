@@ -252,6 +252,19 @@ async function init() {
 
   updateNousTestButton();
   updateBlofinTestButton();
+  window.kt.onPasteStepDone(async (result) => {
+    if (!result?.ok) return;
+    try {
+      const creds = await window.kt.getCredentials();
+      if (creds.blofin) {
+        el.blofinApiKey.value = creds.blofin.apiKey || '';
+        el.blofinSecretKey.value = creds.blofin.secretKey || '';
+        el.blofinPassphrase.value = creds.blofin.passphrase || '';
+        hasBlofinCreds = !!(creds.blofin.apiKey && creds.blofin.secretKey);
+      }
+      updateBlofinTestButton();
+    } catch (_) {}
+  });
   bindHermesWebview();
 
   // Startup sequence: land on the Hermes tab first so the user sees the
