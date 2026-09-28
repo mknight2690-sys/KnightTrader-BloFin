@@ -97,6 +97,7 @@ contextBridge.exposeInMainWorld('kt', {
   vpnOnboardingAutoSetup: (opts) => ipcRenderer.invoke('vpn-onboarding-auto-setup', opts),
   vpnOnboardingStopPoll: () => ipcRenderer.invoke('vpn-onboarding-stop-poll'),
   vpnOpenSignup: (type) => ipcRenderer.invoke('vpn-open-signup', type),
+  vpnOpenProtonApp: () => ipcRenderer.invoke('vpn-open-proton-app'),
   openBlofinPaste: () => ipcRenderer.invoke('open-blofin-paste'),
   openNousPaste: () => ipcRenderer.invoke('open-nous-paste'),
   parseAndSaveBlofinPaste: (text) => ipcRenderer.invoke('parse-and-save-blofin-paste', text),

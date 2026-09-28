@@ -845,6 +845,8 @@ const DEFAULTS = {
   onboarding: {
     firstRunComplete: false,
     vpnVerified: false,
+    protonVpnAutoconnect: false,
+    preferredVpnCountry: 'NL',
     disclaimerSeen: false,
     setupComplete: false,
     locationChecked: false,
@@ -1091,6 +1093,18 @@ const SIGNUP_ONBOARDING_STEP = {
 };
 
 function openSignupWindow(type) {
+  if (type === 'protonDownloads') {
+    const cfgDir = vpn.VPN_CONFIG_DIR;
+    shell.openExternal(SIGNUP_URLS.protonDownloads).catch(() => {});
+    appendLog(`ℹ Opened Proton VPN downloads in your browser. Save .conf files to: ${cfgDir}`, 'info');
+    dialog.showMessageBox(mainWindow || undefined, {
+      type: 'info',
+      title: 'Download WireGuard configs',
+      message: 'Proton VPN downloads opened in your browser',
+      detail: `Sign in, download WireGuard configs for NL/JP/RO/PL, and save them as NL.conf, JP.conf, etc. in:\n\n${cfgDir}\n\nAfter that KnightTrader can connect automatically with no clicks.`,
+    }).catch(() => {});
+    return;
+  }
   const url = SIGNUP_URLS[type] || SIGNUP_URLS.proton;
   const title = SIGNUP_TITLES[type] || 'Sign up';
   pendingSignupContext = { type, url, title, hint: SIGNUP_HINTS[type] || SIGNUP_HINTS.proton };
@@ -3499,14 +3513,23 @@ function registerIPC() {
         } catch (_) {}
       }
     };
+    const preferredCountry = opts?.preferredCountry
+      || storeData.onboarding?.preferredVpnCountry
+      || 'random';
     const result = await ensureBlofinAllowedRoute({
       ...(opts || {}),
+      preferredCountry,
       userDataPath: app.getPath('userData'),
       emit,
     });
     if (result?.allowed) {
       storeData.onboarding = markStepComplete(storeData.onboarding, 'vpn');
       storeData.onboarding.vpnVerified = true;
+      storeData.onboarding.protonVpnAutoconnect = true;
+      const cc = result.country || result.ipInfo?.country;
+      if (cc && vpn.isAllowedCountry(cc)) {
+        storeData.onboarding.preferredVpnCountry = String(cc).toUpperCase();
+      }
       saveStore(storeData);
     }
     return result;
@@ -3514,6 +3537,13 @@ function registerIPC() {
   ipcMain.handle('vpn-onboarding-check', () => getVpnOnboarding().checkLocation());
   ipcMain.handle('vpn-onboarding-auto-setup', (_e, opts) => getVpnOnboarding().runAutoSetup(opts || {}));
   ipcMain.handle('vpn-onboarding-stop-poll', () => { getVpnOnboarding().stopGeoPoll(); return { ok: true }; });
+  ipcMain.handle('vpn-open-proton-app', async () => {
+    const ob = getVpnOnboarding();
+    ob.ensureDirs();
+    await ob.installWireGuard();
+    await ob.installProtonVpnApp();
+    return ob.launchProtonApp();
+  });
   ipcMain.handle('vpn-open-signup', (_e, type) => { openSignupWindow(type); return { ok: true }; });
   ipcMain.handle('get-signup-params', () => pendingSignupContext);
   ipcMain.on('signup-done', (_e, payload) => {

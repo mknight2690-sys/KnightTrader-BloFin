@@ -55,10 +55,11 @@ function buildNewUserNotify(ipInfo, cycle) {
     blocked: BLOCKED_COUNTRIES.has(code) || (code && !vpn.isAllowedCountry(code)),
     notifyUser: true,
     steps: [
-      'ProtonVPN should open — if not, click Open ProtonVPN in the VPN tab.',
-      'Sign in with your free Proton account (create one in Credentials if needed).',
-      'Tap Connect and choose a FREE server in Netherlands, Japan, Romania, or Poland.',
-      'Wait 1–2 minutes after connecting. KnightTrader keeps checking automatically — you do not need to click anything else.',
+      'The ProtonVPN desktop app will open (not a browser — use the app window).',
+      'First time only: sign in with your free Proton account and complete CAPTCHA in the signup popup if you have not yet.',
+      'In ProtonVPN click Quick Connect or pick Netherlands, Japan, Romania, or Poland (free).',
+      'Enable “Auto-connect on launch” in ProtonVPN settings once — after that KnightTrader reconnects automatically.',
+      'Wait 1–2 minutes. KnightTrader keeps checking — no more clicks needed on future launches.',
     ],
     cycleLabel: `Auto-check #${cycle} — KnightTrader is still waiting for an allowed country…`,
   };

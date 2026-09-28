@@ -261,28 +261,51 @@
   async function maybeAutoEnsureBlockedRegion() {
     if (autoEnsureStarted || ensureRunning) return;
     try {
-      const ipInfo = await window.kt.vpnGetLocation();
+      const [ipInfo, state] = await Promise.all([
+        window.kt.vpnGetLocation(),
+        window.kt.getOnboardingState().catch(() => ({})),
+      ]);
       if (ipInfo?.allowed) return;
       autoEnsureStarted = true;
-      if (HARD_BLOCKED.has(ipInfo?.country)) {
-        showWaitOverlay({
-          title: ipInfo.country === 'US'
-            ? 'You are in the United States — VPN required'
-            : 'Blocked region — VPN required',
-          body: 'KnightTrader is starting automatic VPN setup. ProtonVPN will open — connect to Netherlands, Japan, Romania, or Poland.',
-          ipInfo,
-          cycle: 0,
-        });
-        appendLog(`Blocked region (${ipInfo.country}) — starting auto VPN cycle…`);
-        runEnsure();
+      const returning = !!(state?.protonVpnAutoconnect || state?.vpnVerified);
+      showWaitOverlay({
+        title: ipInfo.country === 'US'
+          ? 'You are in the United States — VPN required'
+          : 'VPN required for BloFin',
+        body: returning
+          ? 'KnightTrader is reconnecting VPN automatically — no action needed unless ProtonVPN asks you to sign in.'
+          : 'First-time setup: complete Proton signup if prompted, then sign in to the ProtonVPN desktop app once. Future launches auto-connect.',
+        ipInfo,
+        cycle: 0,
+      });
+      appendLog(`Geo ${ipInfo.country || '?'} not allowed — auto VPN ${returning ? 'reconnect' : 'setup'}…`);
+      const pref = state?.preferredVpnCountry || 'random';
+      ensureRunning = true;
+      el.btnEnsure && (el.btnEnsure.disabled = true);
+      try {
+        await window.kt.vpnEnsureRoute({ preferredCountry: pref });
+      } finally {
+        ensureRunning = false;
+        el.btnEnsure && (el.btnEnsure.disabled = false);
       }
     } catch (_) {}
   }
 
+  async function openProtonDesktopApp() {
+    appendLog('Opening ProtonVPN desktop app…');
+    try {
+      const res = await window.kt.vpnOpenProtonApp();
+      if (res?.ok) appendLog('ProtonVPN app launched — sign in and connect to NL, JP, RO, or PL.');
+      else appendLog(res?.error || 'ProtonVPN not installed yet — running auto-install…');
+    } catch (e) {
+      appendLog(`Open ProtonVPN failed: ${e.message}`);
+    }
+  }
+
   el.btnVerify?.addEventListener('click', () => refreshStatus(true));
   el.btnEnsure?.addEventListener('click', () => runEnsure());
-  el.btnProton?.addEventListener('click', () => window.kt.vpnOpenSignup('protonDownloads'));
-  el.btnWaitProton?.addEventListener('click', () => window.kt.vpnOpenSignup('protonDownloads'));
+  el.btnProton?.addEventListener('click', () => openProtonDesktopApp());
+  el.btnWaitProton?.addEventListener('click', () => openProtonDesktopApp());
   el.btnWaitTab?.addEventListener('click', () => {
     try { document.querySelector('.nav-item[data-tab="vpn"]')?.click(); } catch (_) {}
   });
