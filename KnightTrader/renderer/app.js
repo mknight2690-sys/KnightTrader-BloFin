@@ -21,9 +21,8 @@ const $ = (id) => document.getElementById(id);
 const el = {
   minimize: $('btn-minimize'), maximize: $('btn-maximize'), close: $('btn-close'),
 
-  // VPN helper
+  // VPN onboarding (see vpn-onboarding.js)
   vpnCountry: $('vpn-country'),
-  btnVpnGuide: $('btn-vpn-guide'),
   vpnStatus: $('vpn-status'),
   navItems: document.querySelectorAll('.nav-item'),
   tabPanels: document.querySelectorAll('.tab-panel'),

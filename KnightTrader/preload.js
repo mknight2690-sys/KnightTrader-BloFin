@@ -89,5 +89,12 @@ contextBridge.exposeInMainWorld('kt', {
   vpnDetect: () => ipcRenderer.invoke('vpn-detect'),
   vpnConnect: (code) => ipcRenderer.invoke('vpn-connect', code),
   vpnDisconnect: () => ipcRenderer.invoke('vpn-disconnect'),
-  vpnAllowed: () => ipcRenderer.invoke('vpn-allowed')
+  vpnAllowed: () => ipcRenderer.invoke('vpn-allowed'),
+  vpnOnboardingCheck: () => ipcRenderer.invoke('vpn-onboarding-check'),
+  vpnOnboardingAutoSetup: (opts) => ipcRenderer.invoke('vpn-onboarding-auto-setup', opts),
+  vpnOnboardingStopPoll: () => ipcRenderer.invoke('vpn-onboarding-stop-poll'),
+  vpnOpenSignup: (type) => ipcRenderer.invoke('vpn-open-signup', type),
+  onVpnOnboardingStatus: (cb) => ipcRenderer.on('vpn-onboarding-status', (_e, data) => cb(data)),
+  getOnboardingState: () => ipcRenderer.invoke('get-onboarding-state'),
+  setOnboardingState: (patch) => ipcRenderer.invoke('set-onboarding-state', patch),
 });

@@ -4,6 +4,7 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { BlohunterBridge } = require('./blohunter-bridge');
 const vpn = require('./vpn');
+const { VpnOnboarding } = require('./lib/vpn-onboarding');
 const { spawn, execFileSync, execSync } = require('child_process');
 const crypto = require('crypto');
 const http = require('http');
@@ -824,7 +825,8 @@ const FALLBACK_PAID_NOUS_MODELS = [
 const DEFAULTS = {
   blofin: { apiKey: '', secretKey: '', passphrase: '', demoMode: false },
   nous:   { apiKey: '', model: DEFAULT_NOUS_MODEL },
-  settings: { notifySounds: true }
+  settings: { notifySounds: true },
+  onboarding: { firstRunComplete: false, vpnVerified: false },
 };
 
 const LEGACY_NOUS_MODELS = {
@@ -859,6 +861,7 @@ function migrateStoreData(raw) {
     };
   }
   delete merged.nouse;
+  merged.onboarding = { ...DEFAULTS.onboarding, ...(merged.onboarding || {}) };
   return merged;
 }
 
@@ -880,6 +883,68 @@ function saveStore(data) {
 }
 
 let storeData = loadStore();
+
+let vpnOnboarding = null;
+function getVpnOnboarding() {
+  if (!vpnOnboarding) {
+    vpnOnboarding = new VpnOnboarding({
+      userDataPath: app.getPath('userData'),
+      emit: (payload) => {
+        try {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('vpn-onboarding-status', payload);
+          }
+        } catch (_) {}
+        const level = (payload.step === 'connected' || payload.step === 'ready') ? 'success' : 'info';
+        appendLog(`[VPN] ${payload.message}`, level);
+      },
+    });
+  }
+  return vpnOnboarding;
+}
+
+let signupWindow = null;
+const SIGNUP_URLS = {
+  proton: 'https://account.proton.me/signup',
+  protonvpn: 'https://account.protonvpn.com/signup',
+  protonDownloads: 'https://account.protonvpn.com/downloads',
+  blofin: 'https://blofin.com/register',
+  blofinLogin: 'https://blofin.com/login',
+};
+const SIGNUP_TITLES = {
+  proton: 'Create Proton account (free email + VPN)',
+  protonvpn: 'Create Proton VPN account',
+  protonDownloads: 'Download Proton VPN configs',
+  blofin: 'Create BloFin account',
+  blofinLogin: 'Sign in to BloFin',
+};
+
+function openSignupWindow(type) {
+  const url = SIGNUP_URLS[type] || SIGNUP_URLS.proton;
+  const title = SIGNUP_TITLES[type] || 'Sign up';
+  if (signupWindow && !signupWindow.isDestroyed()) {
+    signupWindow.setTitle(title);
+    signupWindow.loadURL(url);
+    signupWindow.show();
+    signupWindow.focus();
+    return;
+  }
+  signupWindow = new BrowserWindow({
+    parent: mainWindow || undefined,
+    width: 1020,
+    height: 800,
+    title,
+    backgroundColor: '#0b0f14',
+    autoHideMenuBar: true,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  signupWindow.loadURL(url);
+  signupWindow.on('closed', () => { signupWindow = null; });
+}
 
 let blohunterBridge = null;
 function getBlohunterBridge() {
@@ -3103,6 +3168,16 @@ function registerIPC() {
   ipcMain.handle('vpn-connect',       (_e, code) => vpn.connectCountry(code));
   ipcMain.handle('vpn-disconnect',    () => vpn.disconnect());
   ipcMain.handle('vpn-allowed',       () => vpn.allowedCountryList());
+  ipcMain.handle('vpn-onboarding-check', () => getVpnOnboarding().checkLocation());
+  ipcMain.handle('vpn-onboarding-auto-setup', (_e, opts) => getVpnOnboarding().runAutoSetup(opts || {}));
+  ipcMain.handle('vpn-onboarding-stop-poll', () => { getVpnOnboarding().stopGeoPoll(); return { ok: true }; });
+  ipcMain.handle('vpn-open-signup', (_e, type) => { openSignupWindow(type); return { ok: true }; });
+  ipcMain.handle('get-onboarding-state', () => storeData.onboarding || DEFAULTS.onboarding);
+  ipcMain.handle('set-onboarding-state', (_e, patch) => {
+    storeData.onboarding = { ...DEFAULTS.onboarding, ...(storeData.onboarding || {}), ...(patch || {}) };
+    saveStore(storeData);
+    return { ok: true, onboarding: storeData.onboarding };
+  });
 
   ipcMain.handle('get-blohunter-preload-path', () => pathToFileURL(path.join(__dirname, 'blohunter-preload.js')).href);
   ipcMain.handle('unthrottle-webview', (_e, webContentsId) => {
@@ -3543,6 +3618,11 @@ app.whenReady().then(async () => {
   if (bhRoot) appendLog(`📈 BloHunter Connect: ${bhRoot}`, 'info');
   else appendLog('⚠ BloHunter Connect not found — Trading tab needs Downloads\\blohunter-connect', 'warn');
   startBlohunterHotReloadWatcher();
+  setTimeout(() => {
+    getVpnOnboarding().checkLocation().catch((e) => {
+      appendLog(`ℹ VPN location check: ${e.message}`, 'info');
+    });
+  }, 4000);
   checkForUpdatesFromMain().then(() => {
     if (updateDownloadedInfo && installerFileExists()) {
       broadcastUpdate('update-downloaded', {

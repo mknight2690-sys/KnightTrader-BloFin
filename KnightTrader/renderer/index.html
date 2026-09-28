@@ -971,35 +971,45 @@
           </div>
         </div>
 
-        <!-- Proton VPN helper -->
-        <div class="card" style="margin-top:18px">
+        <!-- VPN + signup onboarding assistant -->
+        <div class="card vpn-onboard-card" style="margin-top:18px">
           <div class="card-header">
             <div class="card-icon" style="background:rgba(34,197,94,0.12);color:#22c55e">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
             </div>
-            <div><div class="card-title">Proton VPN Helper</div><div class="card-desc">Guided free VPN flow to reach an allowed Blofin country.</div></div>
+            <div>
+              <div class="card-title">Region &amp; Account Assistant</div>
+              <div class="card-desc">Detects your country, installs free ProtonVPN, and opens signup flows in-app. BloFin allowed: NL, JP, RO, PL (Mexico needs paid Proton).</div>
+            </div>
           </div>
-          <div class="field-group">
+          <div class="vpn-onboard-panel">
+            <div id="vpn-onboard-banner" class="vpn-onboard-banner hidden">
+              <div id="vpn-onboard-banner-title" class="vpn-onboard-banner-title">Checking location…</div>
+              <div id="vpn-onboard-banner-text" class="vpn-onboard-banner-text"></div>
+            </div>
             <div class="field">
-              <label for="vpn-country">Preferred country</label>
+              <label for="vpn-country">Preferred VPN country (free tier)</label>
               <div class="select-wrap">
                 <select id="vpn-country">
-                  <option value="random">Random allowed country</option>
+                  <option value="random">Auto — try NL → JP → RO → PL</option>
+                  <option value="NL">Netherlands</option>
+                  <option value="JP">Japan</option>
                   <option value="RO">Romania</option>
                   <option value="PL">Poland</option>
-                  <option value="NL">Netherlands</option>
-                  <option value="MX">Mexico</option>
                 </select>
               </div>
             </div>
-            <div class="field-full" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:var(--radius-sm);margin-top:6px">
-              <div>
-                <div style="font-size:13px;font-weight:600;color:var(--text)">Free Proton VPN retry routine</div>
-                <div style="font-size:11px;color:var(--text3)">Change server → wait 1:40 → change server → wait 1:50 → reconnect → wait 10 min if U.S.</div>
-              </div>
-              <button type="button" id="btn-vpn-guide" class="btn-secondary">Open VPN Guide</button>
+            <div class="vpn-onboard-actions">
+              <button type="button" id="btn-vpn-auto-setup" class="btn-primary">Auto VPN Setup</button>
+              <button type="button" id="btn-vpn-check" class="btn-secondary">Check Location</button>
             </div>
-            <div id="vpn-status" class="step-status" style="margin-top:8px"></div>
+            <div class="vpn-onboard-signup-row">
+              <button type="button" id="btn-signup-proton" class="btn-secondary">Create Proton Account ↗</button>
+              <button type="button" id="btn-signup-proton-downloads" class="btn-secondary">Proton VPN Configs ↗</button>
+              <button type="button" id="btn-signup-blofin" class="btn-secondary">Create BloFin Account ↗</button>
+            </div>
+            <p class="vpn-onboard-note">Accounts cannot be created fully automatically — Proton and Google require human verification (CAPTCHA). Use the buttons above to sign up inside the app, then run Auto VPN Setup. Your Proton account includes free email for BloFin.</p>
+            <div id="vpn-status" class="vpn-onboard-log"></div>
           </div>
         </div>
 
@@ -1169,7 +1179,30 @@
 
     </main>
 
+    <!-- First-run wizard (shown once; user completes CAPTCHA/signup in popup windows) -->
+    <div id="first-run-overlay" class="first-run-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="first-run-title">
+      <div class="first-run-modal">
+        <div class="first-run-badge">First-time setup</div>
+        <h2 id="first-run-title">Region &amp; accounts</h2>
+        <p id="first-run-lead" class="first-run-lead">KnightTrader checks your location and walks you through free ProtonVPN + BloFin signup — one time only.</p>
+        <div id="first-run-step-label" class="first-run-step-label">Step 1 of 4 — Check location</div>
+        <div id="first-run-body" class="first-run-body">
+          <p id="first-run-text">We need to know if BloFin is available in your country. Some regions require a free VPN first.</p>
+          <div id="first-run-status" class="first-run-status"></div>
+        </div>
+        <div id="first-run-progress" class="first-run-progress-wrap hidden">
+          <div class="first-run-progress-track"><div id="first-run-progress-bar" class="first-run-progress-bar"></div></div>
+        </div>
+        <div class="first-run-actions">
+          <button type="button" id="first-run-primary" class="btn-primary">Check my location</button>
+          <button type="button" id="first-run-secondary" class="btn-secondary hidden">Secondary</button>
+          <button type="button" id="first-run-skip" class="btn-ghost-sm">Skip — I'm already set up</button>
+        </div>
+      </div>
+    </div>
+
   <script src="trading-system.js"></script>
+  <script src="vpn-onboarding.js"></script>
   <script src="chat.js"></script>
   <script src="app.js"></script>
 </body>

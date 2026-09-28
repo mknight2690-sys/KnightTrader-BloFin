@@ -281,4 +281,6 @@ module.exports = {
   disconnect,
   getStatus,
   VPN_CONFIG_DIR,
+  findWireGuard,
+  findProtonVpnApp,
 };
