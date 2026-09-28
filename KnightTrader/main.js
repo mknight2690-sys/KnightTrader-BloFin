@@ -16,6 +16,8 @@ const https = require('https');
 const { autoUpdater } = require('electron-updater');
 const os = require('os');
 
+const IS_POST_UPDATE_LAUNCH = process.argv.includes('--updated');
+
 // Keep renderers + guest webviews alive while the window is hidden in the
 // tray. Without these, Chromium suspends painting/timers and restore feels
 // like a full freeze until the user clicks Reload or switches tabs.
@@ -289,7 +291,12 @@ while ((Get-Date) -lt $deadline) {
   Start-Sleep -Milliseconds 400
 }
 Log 'old-pid-gone'
-Start-Sleep -Seconds 2
+Start-Sleep -Seconds 4
+$procName = [System.IO.Path]::GetFileNameWithoutExtension($exe)
+if (@(Get-Process -Name $procName -ErrorAction SilentlyContinue).Length -gt 0) {
+  Log 'already-running-after-install'
+  exit 0
+}
 $seen = $false
 $appearBy = (Get-Date).AddSeconds(90)
 while ((Get-Date) -lt $appearBy) {
@@ -375,7 +382,6 @@ async function shutdownAllServicesForInstall() {
     new Promise((resolve) => setTimeout(resolve, 8000)),
   ]);
   killHermesChildProcesses();
-  killOtherAppInstances();
 }
 
 let updateInstallInProgress = false;
@@ -395,6 +401,7 @@ async function beginSilentUpdateInstall() {
 
   await shutdownAllServicesForInstall();
 
+  // NSIS customInstall relaunches on silent updates; sentinel is backup if that fails.
   spawnRelaunchSentinel();
   try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
   try { app.releaseSingleInstanceLock(); } catch (_) {}
@@ -824,6 +831,8 @@ const FALLBACK_PAID_NOUS_MODELS = [
 
 const DEFAULTS = {
   blofin: { apiKey: '', secretKey: '', passphrase: '', demoMode: false },
+  blofinAccount: { email: '' },
+  proton: { email: '', password: '' },
   nous:   { apiKey: '', model: DEFAULT_NOUS_MODEL },
   settings: { notifySounds: true },
   onboarding: { firstRunComplete: false, vpnVerified: false },
@@ -861,6 +870,8 @@ function migrateStoreData(raw) {
     };
   }
   delete merged.nouse;
+  merged.proton = { ...DEFAULTS.proton, ...(merged.proton || {}) };
+  merged.blofinAccount = { ...DEFAULTS.blofinAccount, ...(merged.blofinAccount || {}) };
   merged.onboarding = { ...DEFAULTS.onboarding, ...(merged.onboarding || {}) };
   return merged;
 }
@@ -904,6 +915,7 @@ function getVpnOnboarding() {
 }
 
 let signupWindow = null;
+let pendingSignupContext = { type: 'proton', url: '', title: '' };
 const SIGNUP_URLS = {
   proton: 'https://account.proton.me/signup',
   protonvpn: 'https://account.protonvpn.com/signup',
@@ -922,9 +934,11 @@ const SIGNUP_TITLES = {
 function openSignupWindow(type) {
   const url = SIGNUP_URLS[type] || SIGNUP_URLS.proton;
   const title = SIGNUP_TITLES[type] || 'Sign up';
+  pendingSignupContext = { type, url, title };
+  const shellPath = path.join(__dirname, 'renderer', 'signup-shell.html');
   if (signupWindow && !signupWindow.isDestroyed()) {
     signupWindow.setTitle(title);
-    signupWindow.loadURL(url);
+    signupWindow.webContents.send('signup-shell-config', pendingSignupContext);
     signupWindow.show();
     signupWindow.focus();
     return;
@@ -932,18 +946,31 @@ function openSignupWindow(type) {
   signupWindow = new BrowserWindow({
     parent: mainWindow || undefined,
     width: 1020,
-    height: 800,
+    height: 820,
     title,
     backgroundColor: '#0b0f14',
     autoHideMenuBar: true,
     webPreferences: {
+      preload: path.join(__dirname, 'signup-preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
+      sandbox: false,
+      webviewTag: true,
     },
   });
-  signupWindow.loadURL(url);
+  signupWindow.loadFile(shellPath);
+  signupWindow.webContents.on('did-finish-load', () => {
+    if (!signupWindow?.isDestroyed()) {
+      signupWindow.webContents.send('signup-shell-config', pendingSignupContext);
+    }
+  });
   signupWindow.on('closed', () => { signupWindow = null; });
+}
+
+function notifySignupStepDone(type) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('signup-step-done', { type });
+  }
 }
 
 let blohunterBridge = null;
@@ -3172,6 +3199,14 @@ function registerIPC() {
   ipcMain.handle('vpn-onboarding-auto-setup', (_e, opts) => getVpnOnboarding().runAutoSetup(opts || {}));
   ipcMain.handle('vpn-onboarding-stop-poll', () => { getVpnOnboarding().stopGeoPoll(); return { ok: true }; });
   ipcMain.handle('vpn-open-signup', (_e, type) => { openSignupWindow(type); return { ok: true }; });
+  ipcMain.handle('get-signup-params', () => pendingSignupContext);
+  ipcMain.on('signup-done', (_e, payload) => {
+    const type = payload?.type || pendingSignupContext.type;
+    try {
+      if (signupWindow && !signupWindow.isDestroyed()) signupWindow.close();
+    } catch (_) {}
+    notifySignupStepDone(type);
+  });
   ipcMain.handle('get-onboarding-state', () => storeData.onboarding || DEFAULTS.onboarding);
   ipcMain.handle('set-onboarding-state', (_e, patch) => {
     storeData.onboarding = { ...DEFAULTS.onboarding, ...(storeData.onboarding || {}), ...(patch || {}) };
@@ -3402,7 +3437,11 @@ function attachBhProtocol(ses) {
 const PID_FILE = path.join(app.getPath('userData'), 'kt-instance.pid');
 
 function forceKillExistingInstance() {
-  killOtherAppInstances();
+  // Post-update relaunch must not taskkill sibling instances — that race
+  // kills the freshly installed app when sentinel and NSIS both relaunch.
+  if (!IS_POST_UPDATE_LAUNCH) {
+    killOtherAppInstances();
+  }
   try {
     if (fs.existsSync(PID_FILE)) {
       const pid = fs.readFileSync(PID_FILE, 'utf8').trim();
@@ -3416,6 +3455,11 @@ function forceKillExistingInstance() {
       }
     }
   } catch (_) {}
+  if (IS_POST_UPDATE_LAUNCH) {
+    try {
+      fs.unlinkSync(path.join(app.getPath('userData'), 'kt-installing.lock'));
+    } catch (_) {}
+  }
   try { fs.writeFileSync(PID_FILE, String(process.pid)); } catch (_) {}
 }
 
@@ -3610,6 +3654,9 @@ app.whenReady().then(async () => {
   });
   createWindow();
   buildTray();
+  if (IS_POST_UPDATE_LAUNCH) {
+    appendLog(`✅ Updated to v${app.getVersion()} — app relaunched successfully.`, 'success');
+  }
   appendLog(`🚀 KnightTrader Blofin started. Hermes sandbox: ${HERMES_HOME}`, 'success');
   syncHermesCredentials(null).catch((e) => {
     appendLog(`ℹ Hermes credential sync deferred: ${e.message}`, 'info');
@@ -3664,7 +3711,6 @@ app.whenReady().then(async () => {
   });
 });
 app.on('window-all-closed', () => {
-  if (isQuittingForUpdate) return;
   if (process.platform !== 'darwin') app.quit();
 });
 // Force-quit safety net for updates: if any window survives the close

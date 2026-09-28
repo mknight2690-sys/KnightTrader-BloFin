@@ -88,13 +88,32 @@ class VpnOnboarding {
     return { ok: false, error: 'WireGuard not found after install attempt' };
   }
 
+  async cacheProtonInstaller() {
+    const marker = path.join(this.installerDir, 'proton-vpn-installed.marker');
+    if (fs.existsSync(marker)) return marker;
+    this.status('proton-cache', 'Caching ProtonVPN installer in app sandbox…');
+    try {
+      await run('winget', [
+        'download', '--id', 'Proton.ProtonVPN', '-e',
+        '--accept-source-agreements', '--accept-package-agreements',
+        '--download-directory', this.installerDir,
+      ], { timeout: 600000 });
+      fs.writeFileSync(marker, String(Date.now()), 'utf8');
+      this.status('proton-cache', `Installer cached under ${this.protonHome}`);
+    } catch (e) {
+      this.status('proton-cache-warn', `Could not cache installer: ${e.message}`, { error: e.message });
+    }
+    return marker;
+  }
+
   async installProtonVpnApp() {
     const existing = vpn.findProtonVpnApp();
     if (existing) {
       this.status('proton-app', 'ProtonVPN app is already installed.');
       return { ok: true, alreadyInstalled: true, path: existing };
     }
-    this.status('proton-app', 'Installing ProtonVPN app…');
+    await this.cacheProtonInstaller();
+    this.status('proton-app', 'Installing ProtonVPN app (managed by KnightTrader)…');
     try {
       await run('winget', [
         'install', '--id', 'Proton.ProtonVPN', '-e',

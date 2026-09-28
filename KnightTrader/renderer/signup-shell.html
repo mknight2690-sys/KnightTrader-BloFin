@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-src https: http:; img-src https: data:;" />
+  <title>Sign up</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: #0b0f14; color: #e8edf5; font-family: Inter, Segoe UI, sans-serif; }
+    body { display: flex; flex-direction: column; }
+    .toolbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+    }
+    .toolbar-title { font-size: 13px; font-weight: 600; color: #cbd5e1; }
+    .toolbar-hint { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+    .btn-done {
+      border: none; border-radius: 8px; padding: 10px 16px; font-weight: 600; cursor: pointer;
+      background: linear-gradient(135deg, #f5c542, #e8a020); color: #0b0d10;
+    }
+    .btn-done:hover { filter: brightness(1.05); }
+    webview { flex: 1; width: 100%; border: none; background: #fff; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <div>
+      <div id="title" class="toolbar-title">Sign up</div>
+      <div class="toolbar-hint">Complete CAPTCHA and forms here, then click Done to continue setup.</div>
+    </div>
+    <button id="btn-done" type="button" class="btn-done">Done — continue</button>
+  </div>
+  <webview id="wv" partition="persist:kt-signup" allowpopups></webview>
+  <script>
+    const titleEl = document.getElementById('title');
+    const wv = document.getElementById('wv');
+    let signupType = 'proton';
+
+    function applyConfig(cfg) {
+      if (!cfg) return;
+      signupType = cfg.type || signupType;
+      if (cfg.title) titleEl.textContent = cfg.title;
+      if (cfg.url && wv.getURL() !== cfg.url) wv.src = cfg.url;
+    }
+
+    window.signupShell.getParams().then(applyConfig).catch(() => {});
+    window.signupShell.onConfig(applyConfig);
+
+    document.getElementById('btn-done').addEventListener('click', () => {
+      window.signupShell.done(signupType);
+    });
+  </script>
+</body>
+</html>

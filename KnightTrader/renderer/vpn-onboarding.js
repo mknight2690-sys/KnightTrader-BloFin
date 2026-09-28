@@ -1,4 +1,4 @@
-// Region / VPN / signup onboarding — first-run modal + Setup tab assistant.
+// Region / VPN / signup onboarding — first-run modal + Credentials tab assistant.
 (() => {
   const $ = (id) => document.getElementById(id);
 
@@ -9,11 +9,17 @@
     stepLabel: $('first-run-step-label'),
     text: $('first-run-text'),
     status: $('first-run-status'),
+    credsWrap: $('first-run-creds'),
+    frProtonEmail: $('fr-proton-email'),
+    frProtonPassword: $('fr-proton-password'),
+    frBlofinWrap: $('fr-blofin-wrap'),
+    frBlofinEmail: $('fr-blofin-email'),
     progressWrap: $('first-run-progress'),
     progressBar: $('first-run-progress-bar'),
     btnPrimary: $('first-run-primary'),
     btnSecondary: $('first-run-secondary'),
     btnSkip: $('first-run-skip'),
+    btnRerunWizard: $('btn-rerun-wizard'),
     vpnCountry: $('vpn-country'),
     btnVpnAuto: $('btn-vpn-auto-setup'),
     btnVpnCheck: $('btn-vpn-check'),
@@ -29,6 +35,7 @@
   let wizardStep = 0;
   let lastLocation = null;
   let needsVpn = false;
+  let signupOpenedForStep = null;
 
   function setStatus(node, text, kind) {
     const target = node || el.status;
@@ -55,6 +62,29 @@
 
   function preferredCountry() {
     return el.vpnCountry?.value || 'random';
+  }
+
+  function showCredFields(mode) {
+    if (!el.credsWrap) return;
+    el.credsWrap.classList.toggle('hidden', !mode);
+    el.frBlofinWrap?.classList.toggle('hidden', mode !== 'blofin');
+  }
+
+  async function saveWizardCredentials(mode) {
+    const proton = {
+      email: el.frProtonEmail?.value?.trim() || '',
+      password: el.frProtonPassword?.value || '',
+    };
+    const blofinAccount = {
+      email: el.frBlofinEmail?.value?.trim() || el.frProtonEmail?.value?.trim() || '',
+    };
+    const patch = mode === 'blofin'
+      ? { blofinAccount }
+      : { proton, blofinAccount: { email: proton.email || blofinAccount.email } };
+    await window.kt.saveCredentials(patch);
+    window.initCredentialsTab?.();
+    setStatus(el.status, 'Credentials saved locally (encrypted).', 'ok');
+    appendSetupLog('Account credentials saved.');
   }
 
   async function checkLocation() {
@@ -103,55 +133,107 @@
   }
 
   function openSignup(type) {
+    signupOpenedForStep = wizardStep;
     window.kt.vpnOpenSignup(type);
-    appendSetupLog(`Opened ${type} signup in app window — complete CAPTCHA/forms there.`);
+    appendSetupLog(`Opened ${type} signup — complete CAPTCHA, then click Done — continue.`);
+  }
+
+  function goToCredentialsTab() {
+    try {
+      document.querySelector('.nav-item[data-tab="credentials"]')?.click();
+    } catch (_) {}
   }
 
   // ── First-run wizard (once) ─────────────────────────────────────
   const STEPS = {
     0: {
-      label: 'Step 1 of 4 — Check location',
+      label: 'Step 1 of 6 — Check location',
       text: 'We check whether BloFin is available where you are. Restricted regions need free ProtonVPN first.',
       primary: 'Check my location',
       secondary: null,
+      showCreds: false,
       async action() {
         const res = await checkLocation();
         if (!res) return;
-        wizardStep = res.allowed ? 3 : 1;
+        wizardStep = res.allowed ? 4 : 1;
         renderWizard();
       },
     },
     1: {
-      label: 'Step 2 of 4 — Create Proton account',
-      text: 'Open Proton signup (CAPTCHA required — one time). A Proton account gives you free VPN and free email for BloFin.',
+      label: 'Step 2 of 6 — Create Proton account',
+      text: 'Opens Proton signup in a popup. Complete CAPTCHA and create your free account, then click Done — continue in that window.',
       primary: 'Open Proton signup',
-      secondary: 'I created my account — continue',
+      secondary: 'Skip — I already have Proton',
+      showCreds: false,
       action() { openSignup('proton'); },
       secondaryAction() { wizardStep = 2; renderWizard(); },
     },
     2: {
-      label: 'Step 3 of 4 — Connect VPN',
-      text: 'The app installs WireGuard + ProtonVPN if needed, then opens ProtonVPN. Connect to a free server in Netherlands, Japan, Romania, or Poland.',
+      label: 'Step 3 of 6 — Save Proton login',
+      text: 'Enter the Proton email and password you just created. These are stored encrypted on this PC (Credentials tab).',
+      primary: 'Save & continue',
+      secondary: null,
+      showCreds: 'proton',
+      async action() {
+        if (!el.frProtonEmail?.value?.trim()) {
+          setStatus(el.status, 'Enter your Proton email.', 'err');
+          return;
+        }
+        await saveWizardCredentials('proton');
+        wizardStep = 3;
+        renderWizard();
+      },
+    },
+    3: {
+      label: 'Step 4 of 6 — Connect VPN',
+      text: 'The app installs WireGuard + ProtonVPN if needed, then opens ProtonVPN. Sign in and connect to a free server in Netherlands, Japan, Romania, or Poland.',
       primary: 'Install & connect VPN',
       secondary: 'Check location again',
+      showCreds: false,
       async action() {
         if (el.progressWrap) el.progressWrap.classList.remove('hidden');
         await runAutoVpnSetup();
       },
       async secondaryAction() {
         const res = await checkLocation();
-        if (res?.allowed) { wizardStep = 3; renderWizard(); }
+        if (res?.allowed) { wizardStep = 4; renderWizard(); }
       },
     },
-    3: {
-      label: 'Step 4 of 4 — BloFin account',
+    4: {
+      label: 'Step 5 of 6 — BloFin account',
       text: needsVpn
-        ? 'Keep VPN connected. Create your BloFin account with your Proton email.'
-        : 'Create your BloFin account (no VPN needed in your region).',
+        ? 'Keep VPN connected. Create your BloFin account with your Proton email in the in-app popup.'
+        : 'Create your BloFin account in the in-app popup (no VPN needed in your region).',
       primary: 'Open BloFin signup',
-      secondary: 'Finish setup',
+      secondary: 'Skip — I already have BloFin',
+      showCreds: false,
       action() { openSignup('blofin'); },
-      async secondaryAction() { await finishFirstRun(true); },
+      secondaryAction() { wizardStep = 6; renderWizard(); },
+    },
+    5: {
+      label: 'Step 6 of 6 — Save BloFin email',
+      text: 'Enter the email you used for BloFin signup. API keys come later on the Setup tab.',
+      primary: 'Save & finish',
+      secondary: null,
+      showCreds: 'blofin',
+      async action() {
+        if (!el.frBlofinEmail?.value?.trim() && !el.frProtonEmail?.value?.trim()) {
+          setStatus(el.status, 'Enter your BloFin account email.', 'err');
+          return;
+        }
+        await saveWizardCredentials('blofin');
+        wizardStep = 6;
+        await finishFirstRun(true);
+      },
+    },
+    6: {
+      label: 'All set',
+      text: 'Account setup complete. Continue with Nous Portal + BloFin API keys on the Setup tab.',
+      primary: 'Open Credentials tab',
+      secondary: 'Close',
+      showCreds: false,
+      action() { goToCredentialsTab(); finishFirstRun(true); },
+      secondaryAction() { finishFirstRun(true); },
     },
   };
 
@@ -161,6 +243,7 @@
     el.overlay.classList.remove('hidden');
     if (el.stepLabel) el.stepLabel.textContent = step.label;
     if (el.text) el.text.textContent = step.text;
+    showCredFields(step.showCreds);
     if (el.btnPrimary) {
       el.btnPrimary.textContent = step.primary;
       el.btnPrimary.classList.remove('hidden');
@@ -173,7 +256,24 @@
         el.btnSecondary.classList.add('hidden');
       }
     }
-    setStatus(el.status, '', '');
+    if (wizardStep !== 3) setStatus(el.status, '', '');
+  }
+
+  function handleSignupDone(type) {
+    appendSetupLog(`${type} signup popup completed.`);
+    if (type === 'proton' || type === 'protonvpn') {
+      if (wizardStep === 1) { wizardStep = 2; renderWizard(); }
+      return;
+    }
+    if (type === 'blofin') {
+      if (wizardStep === 4) {
+        if (el.frBlofinEmail && el.frProtonEmail?.value) {
+          el.frBlofinEmail.value = el.frProtonEmail.value;
+        }
+        wizardStep = 5;
+        renderWizard();
+      }
+    }
   }
 
   async function finishFirstRun(vpnVerified) {
@@ -197,6 +297,11 @@
     renderWizard();
   }
 
+  function rerunWizard() {
+    wizardStep = 0;
+    renderWizard();
+  }
+
   if (el.btnPrimary) {
     el.btnPrimary.addEventListener('click', async () => {
       const step = STEPS[wizardStep];
@@ -212,21 +317,24 @@
   if (el.btnSkip) {
     el.btnSkip.addEventListener('click', () => finishFirstRun(false));
   }
+  el.btnRerunWizard?.addEventListener('click', () => rerunWizard());
 
-  // ── Setup tab controls ──────────────────────────────────────────
+  // ── Credentials tab controls ──────────────────────────────────────────
   el.btnVpnCheck?.addEventListener('click', () => checkLocation());
   el.btnVpnAuto?.addEventListener('click', () => runAutoVpnSetup());
   el.btnSignupProton?.addEventListener('click', () => openSignup('proton'));
   el.btnSignupDownloads?.addEventListener('click', () => openSignup('protonDownloads'));
   el.btnSignupBlofin?.addEventListener('click', () => openSignup('blofin'));
 
+  window.kt.onSignupStepDone((payload) => handleSignupDone(payload?.type));
+
   window.kt.onVpnOnboardingStatus((payload) => {
     const msg = payload?.message || '';
     if (msg) appendSetupLog(msg);
     if (payload?.step === 'connected' || payload?.step === 'ready') {
       showVpnBanner('VPN ready', msg, true);
-      if (payload?.ipInfo?.allowed && wizardStep === 2) {
-        wizardStep = 3;
+      if (payload?.ipInfo?.allowed && wizardStep === 3) {
+        wizardStep = 4;
         renderWizard();
       }
     }

@@ -677,6 +677,7 @@ function switchTab(name) {
   if (name === 'logs') { newLogs = 0; updateLogBadge(); }
   if (name === 'trading') { initTradingTab(); }
   if (name === 'chat') { initChatTab().catch(() => {}); }
+  if (name === 'credentials') { window.initCredentialsTab?.(); }
   if (name === 'hermes' && hermesInstalled && !dashboardRunning && !dashboardStartInFlight) {
     startHermesDashboardUi();
   }

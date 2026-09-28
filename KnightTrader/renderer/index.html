@@ -60,6 +60,10 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           <span>How-To</span>
         </li>
+        <li class="nav-item" data-tab="credentials">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span>Credentials</span>
+        </li>
         <li class="nav-item" data-tab="setup">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
           <span>Setup</span>
@@ -222,13 +226,14 @@
                 <div class="step-title">Sign in to the app</div>
                 <div class="step-desc">Use the same email and password you used on the website.</div>
                 <ol class="howto-list">
-                  <li>When the app opens, you should land on the <strong>How-To</strong> tab — that is normal for first launch.</li>
+                  <li>When the app opens, a <strong>first-time setup wizard</strong> appears — follow it (popup windows + Done buttons). You can also use the <strong>Credentials</strong> tab later.</li>
+                  <li>You should land on the <strong>How-To</strong> tab behind the wizard — that is normal for first launch.</li>
                   <li>If you see a sign-in screen, click into the <strong>email</strong> field and type your membership email exactly.</li>
                   <li>Click the <strong>password</strong> field and type your membership password — use Show password if you need to verify typing.</li>
                   <li>Click <strong>Sign in</strong> once and wait a few seconds.</li>
                   <li>If you see an error, check <strong>Caps Lock</strong> and retype both fields carefully.</li>
                   <li>If it says membership is not active, open the membership site and confirm Stripe subscription status, or renew in the app <strong>Settings</strong> tab if available.</li>
-                  <li>After successful sign-in, explore the left tabs: <strong>How-To</strong>, <strong>Setup</strong>, <strong>Hermes</strong>, <strong>Trading</strong>, <strong>Logs</strong>.</li>
+                  <li>After successful sign-in, explore the left tabs: <strong>How-To</strong>, <strong>Credentials</strong>, <strong>Setup</strong>, <strong>Hermes</strong>, <strong>Chat</strong>, <strong>Trading</strong>, <strong>Logs</strong>.</li>
                 </ol>
                 <div class="step-desc">Do not guess passwords. If you forget it, use <strong>Forgot password?</strong> on the membership login page, not inside the app alone.</div>
               </div>
@@ -269,31 +274,20 @@
             <div class="step-card">
               <div class="step-num">5</div>
               <div class="step-body">
-                <div class="step-title">Install ProtonVPN and reach an allowed country</div>
-                <div class="step-desc">Use this only if Blofin is blocked in your country. Do not skip the wait times.</div>
-                <div class="step-desc"><strong>When you need this step:</strong> If <strong>blofin.com</strong> loads normally without a geo-block message, you can skip VPN entirely. If Blofin says your region is restricted, follow every sub-step below.</div>
-                <div class="step-desc"><strong>Exact routine:</strong></div>
+                <div class="step-title">First-run wizard — ProtonVPN + BloFin (in the app)</div>
+                <div class="step-desc">On first launch, KnightTrader opens a <strong>one-time setup wizard</strong>. You only click through a few popup windows — no manual browser hunting.</div>
+                <div class="step-desc"><strong>What happens automatically:</strong></div>
                 <ol class="howto-list">
-                  <li>Go to <strong>protonvpn.com</strong> in Chrome or Edge.</li>
-                  <li>Click <strong>Get Proton VPN</strong> or <strong>Download</strong> for Windows or Mac.</li>
-                  <li>Run the installer and finish setup (default options are fine).</li>
-                  <li>Create a free Proton account with an email you can access.</li>
-                  <li>Verify your email if Proton sends a link.</li>
-                  <li>Open the ProtonVPN app and sign in.</li>
-                  <li>Click <strong>Quick Connect</strong> or <strong>Connect</strong> once to confirm VPN works.</li>
-                  <li>Note which country flag appears — if it is the <strong>United States</strong>, you must change server (US is not allowed for Blofin in this guide).</li>
-                  <li>Open the ProtonVPN home screen and click <strong>Change server</strong> or pick a country from the list.</li>
-                  <li>Try to land in <strong>Romania</strong>, <strong>Poland</strong>, <strong>Netherlands</strong>, or <strong>Mexico</strong>.</li>
-                  <li>If the new country is <strong>not</strong> one of those four, wait <strong>1 minute 40 seconds</strong> on a timer — do not click again early.</li>
-                  <li>Click <strong>Change server</strong> again.</li>
-                  <li>If it is still not allowed, wait <strong>1 minute 50 seconds</strong>.</li>
-                  <li>Click <strong>Change server</strong> a third time.</li>
-                  <li>If you are still not in an allowed country, click <strong>Disconnect</strong>, wait 10 seconds, then click <strong>Connect</strong>.</li>
-                  <li>If it connects to the <strong>United States</strong> again, wait up to <strong>10 minutes</strong>, then repeat from the Change server step.</li>
-                  <li>Once connected to an allowed country, open <strong>blofin.com</strong> in the same browser and confirm the site loads and lets you sign up.</li>
-                  <li>Leave ProtonVPN connected whenever you use Blofin in the browser until you finish steps 7–15.</li>
+                  <li>The app checks whether BloFin is allowed in your country.</li>
+                  <li>If VPN is needed, it opens an in-app <strong>Proton signup</strong> popup — complete CAPTCHA there, then click <strong>Done — continue</strong>.</li>
+                  <li>Enter your Proton email + password in the wizard (also saved on the <strong>Credentials</strong> tab).</li>
+                  <li>Click <strong>Install &amp; connect VPN</strong> — WireGuard + ProtonVPN install in the background; ProtonVPN opens for you to pick a free server in <strong>Netherlands, Japan, Romania, or Poland</strong>.</li>
+                  <li>An in-app <strong>BloFin signup</strong> popup opens — register with your Proton email, click <strong>Done — continue</strong>.</li>
+                  <li>Your BloFin account email is saved on the <strong>Credentials</strong> tab.</li>
                 </ol>
-                <div class="step-desc">Allowed countries: <strong>Romania, Poland, Netherlands, Mexico</strong>. Not allowed: <strong>Singapore, United States, Canada</strong>. If Blofin works without VPN, do not use VPN — extra hops can cause login issues.</div>
+                <div class="step-desc"><strong>If you skipped the wizard:</strong> open the <strong>Credentials</strong> tab anytime — use <strong>Re-run setup wizard</strong> or the VPN assistant buttons there.</div>
+                <div class="step-desc">If <strong>blofin.com</strong> already works without VPN in your country, the wizard skips VPN steps. Do not turn VPN on unnecessarily — extra hops can cause login issues.</div>
+                <div class="step-desc">Allowed VPN countries for BloFin: <strong>Romania, Poland, Netherlands, Japan</strong> (Mexico needs a paid Proton plan). Not allowed: <strong>United States, Canada, Singapore</strong>.</div>
               </div>
             </div>
 
@@ -359,12 +353,12 @@
               <div class="step-num">7</div>
               <div class="step-body">
                 <div class="step-title">Create a Blofin account</div>
-                <div class="step-desc">This is the exchange where Hermes trades. Create the account first, before you buy crypto.</div>
-                <div class="step-desc"><strong>Click by click:</strong></div>
+                <div class="step-desc">This is the exchange where Hermes trades. The first-run wizard opens BloFin signup in-app (step 5). Use your Proton email if you created one.</div>
+                <div class="step-desc"><strong>Click by click (or use the in-app popup from step 5):</strong></div>
                 <ol class="howto-list">
-                  <li>Open <strong>blofin.com</strong> in Chrome or Edge (use VPN step 5 first if Blofin is blocked in your country).</li>
-                  <li>Click <strong>Sign up</strong> or <strong>Get started</strong>.</li>
-                  <li>Enter your email and create a strong password — save it in your notepad.</li>
+                  <li>In KnightTrader, open <strong>Credentials</strong> → <strong>Create BloFin Account</strong> (or finish the first-run wizard).</li>
+                  <li>Complete signup in the popup, then click <strong>Done — continue</strong>.</li>
+                  <li>Enter your email and create a strong password — save it in your notepad and on the <strong>Credentials</strong> tab.</li>
                   <li>Complete Blofin’s email verification link if sent to your inbox.</li>
                   <li>Complete identity verification (KYC) if Blofin prompts — upload ID photos as requested.</li>
                   <li>Enable <strong>two-factor authentication (2FA)</strong> when offered (Google Authenticator or SMS).</li>
@@ -746,6 +740,90 @@
         </div>
       </section>
 
+      <!-- ── CREDENTIALS TAB ───────────────────────────────── -->
+      <section id="tab-credentials" class="tab-panel">
+        <div class="panel-header">
+          <h1>Account Credentials</h1>
+          <p class="panel-sub">Proton + BloFin account logins stored encrypted on this PC. VPN tools live here too.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon" style="background:rgba(99,102,241,0.12);color:#818cf8">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <div>
+              <div class="card-title">Proton &amp; BloFin accounts</div>
+              <div class="card-desc">Saved during the first-run wizard — edit anytime.</div>
+            </div>
+          </div>
+          <div class="field-group">
+            <div class="field">
+              <label for="cred-proton-email">Proton email (VPN + free mail for BloFin)</label>
+              <input type="email" id="cred-proton-email" placeholder="you@proton.me" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="cred-proton-password">Proton password</label>
+              <div class="input-wrap">
+                <input type="password" id="cred-proton-password" placeholder="Proton account password" autocomplete="off" />
+                <button type="button" class="toggle-vis" data-target="cred-proton-password">👁</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="cred-blofin-account-email">BloFin account email</label>
+              <input type="email" id="cred-blofin-account-email" placeholder="Same as Proton email if you used it" autocomplete="off" />
+            </div>
+            <div class="form-actions" style="margin-top:8px">
+              <div id="cred-save-status" class="save-status"></div>
+              <button type="button" id="btn-save-account-creds" class="btn-primary">Save account credentials</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- VPN + signup onboarding assistant -->
+        <div class="card vpn-onboard-card" style="margin-top:18px">
+          <div class="card-header">
+            <div class="card-icon" style="background:rgba(34,197,94,0.12);color:#22c55e">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            </div>
+            <div>
+              <div class="card-title">Region &amp; VPN Assistant</div>
+              <div class="card-desc">ProtonVPN sandboxed under this app. Signup popups open in-app — click Done when finished.</div>
+            </div>
+          </div>
+          <div class="vpn-onboard-panel">
+            <div id="vpn-onboard-banner" class="vpn-onboard-banner hidden">
+              <div id="vpn-onboard-banner-title" class="vpn-onboard-banner-title">Checking location…</div>
+              <div id="vpn-onboard-banner-text" class="vpn-onboard-banner-text"></div>
+            </div>
+            <div class="field">
+              <label for="vpn-country">Preferred VPN country (free tier)</label>
+              <div class="select-wrap">
+                <select id="vpn-country">
+                  <option value="random">Auto — try NL → JP → RO → PL</option>
+                  <option value="NL">Netherlands</option>
+                  <option value="JP">Japan</option>
+                  <option value="RO">Romania</option>
+                  <option value="PL">Poland</option>
+                </select>
+              </div>
+            </div>
+            <div class="vpn-onboard-actions">
+              <button type="button" id="btn-vpn-auto-setup" class="btn-primary">Auto VPN Setup</button>
+              <button type="button" id="btn-vpn-check" class="btn-secondary">Check Location</button>
+              <button type="button" id="btn-rerun-wizard" class="btn-secondary">Re-run setup wizard</button>
+            </div>
+            <div class="vpn-onboard-signup-row">
+              <button type="button" id="btn-signup-proton" class="btn-secondary">Create Proton Account ↗</button>
+              <button type="button" id="btn-signup-proton-downloads" class="btn-secondary">Proton VPN Configs ↗</button>
+              <button type="button" id="btn-signup-blofin" class="btn-secondary">Create BloFin Account ↗</button>
+            </div>
+            <p class="vpn-onboard-note">CAPTCHA is required once per site — complete it in the popup, then click <strong>Done — continue</strong>. Credentials save to this tab automatically during the wizard.</p>
+            <div id="vpn-status" class="vpn-onboard-log"></div>
+          </div>
+        </div>
+      </section>
+
       <!-- ── SETUP TAB ─────────────────────────────────────── -->
       <section id="tab-setup" class="tab-panel">
         <div class="panel-header">
@@ -971,48 +1049,6 @@
           </div>
         </div>
 
-        <!-- VPN + signup onboarding assistant -->
-        <div class="card vpn-onboard-card" style="margin-top:18px">
-          <div class="card-header">
-            <div class="card-icon" style="background:rgba(34,197,94,0.12);color:#22c55e">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-            </div>
-            <div>
-              <div class="card-title">Region &amp; Account Assistant</div>
-              <div class="card-desc">Detects your country, installs free ProtonVPN, and opens signup flows in-app. BloFin allowed: NL, JP, RO, PL (Mexico needs paid Proton).</div>
-            </div>
-          </div>
-          <div class="vpn-onboard-panel">
-            <div id="vpn-onboard-banner" class="vpn-onboard-banner hidden">
-              <div id="vpn-onboard-banner-title" class="vpn-onboard-banner-title">Checking location…</div>
-              <div id="vpn-onboard-banner-text" class="vpn-onboard-banner-text"></div>
-            </div>
-            <div class="field">
-              <label for="vpn-country">Preferred VPN country (free tier)</label>
-              <div class="select-wrap">
-                <select id="vpn-country">
-                  <option value="random">Auto — try NL → JP → RO → PL</option>
-                  <option value="NL">Netherlands</option>
-                  <option value="JP">Japan</option>
-                  <option value="RO">Romania</option>
-                  <option value="PL">Poland</option>
-                </select>
-              </div>
-            </div>
-            <div class="vpn-onboard-actions">
-              <button type="button" id="btn-vpn-auto-setup" class="btn-primary">Auto VPN Setup</button>
-              <button type="button" id="btn-vpn-check" class="btn-secondary">Check Location</button>
-            </div>
-            <div class="vpn-onboard-signup-row">
-              <button type="button" id="btn-signup-proton" class="btn-secondary">Create Proton Account ↗</button>
-              <button type="button" id="btn-signup-proton-downloads" class="btn-secondary">Proton VPN Configs ↗</button>
-              <button type="button" id="btn-signup-blofin" class="btn-secondary">Create BloFin Account ↗</button>
-            </div>
-            <p class="vpn-onboard-note">Accounts cannot be created fully automatically — Proton and Google require human verification (CAPTCHA). Use the buttons above to sign up inside the app, then run Auto VPN Setup. Your Proton account includes free email for BloFin.</p>
-            <div id="vpn-status" class="vpn-onboard-log"></div>
-          </div>
-        </div>
-
         <!-- Embedded Hermes Dashboard webview -->
         <div id="dashboard-embed-wrap" class="hidden">
           <div class="dash-header">
@@ -1185,9 +1221,23 @@
         <div class="first-run-badge">First-time setup</div>
         <h2 id="first-run-title">Region &amp; accounts</h2>
         <p id="first-run-lead" class="first-run-lead">KnightTrader checks your location and walks you through free ProtonVPN + BloFin signup — one time only.</p>
-        <div id="first-run-step-label" class="first-run-step-label">Step 1 of 4 — Check location</div>
+        <div id="first-run-step-label" class="first-run-step-label">Step 1 of 6 — Check location</div>
         <div id="first-run-body" class="first-run-body">
           <p id="first-run-text">We need to know if BloFin is available in your country. Some regions require a free VPN first.</p>
+          <div id="first-run-creds" class="first-run-creds hidden">
+            <div class="field">
+              <label for="fr-proton-email">Proton email</label>
+              <input type="email" id="fr-proton-email" placeholder="you@proton.me" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="fr-proton-password">Proton password</label>
+              <input type="password" id="fr-proton-password" placeholder="Proton password" autocomplete="off" />
+            </div>
+            <div class="field hidden" id="fr-blofin-wrap">
+              <label for="fr-blofin-email">BloFin account email</label>
+              <input type="email" id="fr-blofin-email" placeholder="Email used for BloFin signup" autocomplete="off" />
+            </div>
+          </div>
           <div id="first-run-status" class="first-run-status"></div>
         </div>
         <div id="first-run-progress" class="first-run-progress-wrap hidden">
@@ -1202,6 +1252,7 @@
     </div>
 
   <script src="trading-system.js"></script>
+  <script src="credentials.js"></script>
   <script src="vpn-onboarding.js"></script>
   <script src="chat.js"></script>
   <script src="app.js"></script>

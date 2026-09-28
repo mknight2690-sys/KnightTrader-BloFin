@@ -1633,6 +1633,29 @@ webview.webview-parked {
   background: linear-gradient(90deg, var(--accent), var(--good));
   transition: width 0.2s ease;
 }
+.first-run-creds {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.first-run-creds.hidden { display: none; }
+.first-run-creds .field label {
+  display: block;
+  font-size: 11px;
+  color: var(--text3);
+  margin-bottom: 4px;
+}
+.first-run-creds .field input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  color: var(--text);
+  font-size: 13px;
+}
+
 .first-run-actions {
   display: flex;
   flex-direction: column;

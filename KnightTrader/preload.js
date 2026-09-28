@@ -94,6 +94,7 @@ contextBridge.exposeInMainWorld('kt', {
   vpnOnboardingAutoSetup: (opts) => ipcRenderer.invoke('vpn-onboarding-auto-setup', opts),
   vpnOnboardingStopPoll: () => ipcRenderer.invoke('vpn-onboarding-stop-poll'),
   vpnOpenSignup: (type) => ipcRenderer.invoke('vpn-open-signup', type),
+  onSignupStepDone: (cb) => ipcRenderer.on('signup-step-done', (_e, data) => cb(data)),
   onVpnOnboardingStatus: (cb) => ipcRenderer.on('vpn-onboarding-status', (_e, data) => cb(data)),
   getOnboardingState: () => ipcRenderer.invoke('get-onboarding-state'),
   setOnboardingState: (patch) => ipcRenderer.invoke('set-onboarding-state', patch),
