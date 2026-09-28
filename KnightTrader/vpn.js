@@ -218,18 +218,7 @@ async function connectCountry(code) {
   }
   const wg = findWireGuard();
   if (!wg) {
-    const proton = findProtonVpnApp();
-    if (proton) {
-      // Fallback: launch the ProtonVPN app and ask the user to pick the country.
-      const { shell } = require('electron');
-      try { shell.openPath(proton); } catch {}
-      return {
-        ok: false,
-        needsConfig: true,
-        error: 'WireGuard not found. Opened ProtonVPN — please connect to ' + country + ' there, then click Verify.',
-      };
-    }
-    return { ok: false, needsConfig: true, error: 'No VPN backend detected. Install WireGuard or ProtonVPN.' };
+    return { ok: false, needsConfig: true, error: 'WireGuard is not installed yet. KnightTrader will install it into its own tunnel list.' };
   }
 
   const cfg = configForCountry(country);
@@ -237,15 +226,20 @@ async function connectCountry(code) {
     return {
       ok: false,
       needsConfig: true,
-      error: `No WireGuard config for ${country}. Drop ${country}.conf into ${VPN_CONFIG_DIR} (see How-To).`,
+      error: `No WireGuard profile for ${country} yet.`,
     };
   }
 
   try {
     if (process.platform === 'win32') {
-      // Install as a tunnel service so it survives the app process.
-      await run(wg, ['/installtunnelservice', cfg.path]);
-      activeTunnelName = path.basename(cfg.path, '.conf');
+      await disconnect();
+      const runDir = path.join(os.tmpdir(), 'knighttrader-wg');
+      fs.mkdirSync(runDir, { recursive: true });
+      const tunnelName = `KnightTrader-${country}`;
+      const runPath = path.join(runDir, `${tunnelName}.conf`);
+      fs.copyFileSync(cfg.path, runPath);
+      await run(wg, ['/installtunnelservice', runPath]);
+      activeTunnelName = tunnelName;
     } else {
       // macOS/Linux: wg-quick up <path>
       activeProcess = spawn(wg, ['up', cfg.path], { stdio: 'ignore' });

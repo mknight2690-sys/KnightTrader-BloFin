@@ -27,10 +27,13 @@
     waitBody: $('vpn-wait-body'),
     waitSteps: $('vpn-wait-steps'),
     waitCycle: $('vpn-wait-cycle'),
-    btnWaitProton: $('vpn-wait-open-proton'),
     btnWaitSignin: $('vpn-wait-signin'),
     btnWaitCreate: $('vpn-wait-create'),
+    btnWaitContinue: $('vpn-wait-continue'),
     btnWaitTab: $('vpn-wait-show-tab'),
+    waitAccount: $('vpn-wait-account'),
+    waitEmail: $('vpn-wait-email'),
+    waitPassword: $('vpn-wait-password'),
   };
 
   const FLAGS = { NL: '🇳🇱', JP: '🇯🇵', RO: '🇷🇴', PL: '🇵🇱', MX: '🇲🇽', US: '🇺🇸', CA: '🇨🇦', SG: '🇸🇬' };
@@ -112,8 +115,8 @@
     }
     if (el.blofinBadge) {
       el.blofinBadge.textContent = allowed
-        ? '✓ BloFin status: allowed region'
-        : '✗ BloFin status: blocked or unknown region';
+        ? `Confirmed: ${name} (${code}) is a BloFin-allowed country`
+        : `Not confirmed: ${name} (${code}) is not a BloFin-allowed country`;
       el.blofinBadge.style.color = allowed ? 'var(--accent)' : 'var(--warn, #f5a623)';
     }
     if (el.verify) {
@@ -140,15 +143,23 @@
       if (payload?.ipInfo) renderStatus(payload.ipInfo, true);
       return;
     }
-    if (payload?.step === 'user-notify' || payload?.notifyUser) {
-      if ((payload.cycle || 1) <= 1 && !usNoticeShown) showUsNoticeOnce(payload.ipInfo, payload);
+    if (payload?.step === 'account-required') {
+      showAccountPrompt(payload.ipInfo);
+      return;
+    }
+    if (payload?.step === 'please-wait' || payload?.step === 'user-notify') {
+      showPleaseWait(payload.ipInfo, payload);
       if (payload.message) appendLog(payload.message);
       return;
     }
     if (payload?.step === 'wrong-country' || payload?.step === 'cycling' || payload?.step === 'polling') {
-      if (!usNoticeShown && payload.ipInfo && !payload.ipInfo.allowed) showUsNoticeOnce(payload.ipInfo);
       if (payload.message) appendLog(payload.message);
       if (payload.ipInfo) renderStatus(payload.ipInfo, false);
+      if (payload.ipInfo && el.waitCountry && !el.waitOverlay?.classList.contains('hidden')) {
+        const code = payload.ipInfo.country || '';
+        const name = payload.ipInfo.countryName || code;
+        el.waitCountry.textContent = code ? `Currently detected: ${FLAGS[code] || '🌍'} ${name} (${code})` : 'Checking your location…';
+      }
     }
   };
 
@@ -161,9 +172,6 @@
       }
       const ipInfo = await window.kt.vpnGetLocation();
       renderStatus(ipInfo, false);
-      if (!ipInfo?.allowed && HARD_BLOCKED.has(ipInfo?.country) && !usNoticeShown) {
-        showUsNoticeOnce(ipInfo);
-      }
       return { allowed: !!ipInfo?.allowed, ipInfo };
     } catch (e) {
       appendLog(`Verify failed: ${e.message}`);
@@ -248,26 +256,55 @@
     }
   }
 
+  function setAccountPhase(show) {
+    el.waitAccount?.classList.toggle('hidden', !show);
+  }
+
+  function showAccountPrompt(ipInfo) {
+    setAccountPhase(true);
+    showWaitOverlay({
+      title: ipInfo?.country === 'US' ? 'You are in the United States — VPN required' : 'VPN required for BloFin',
+      body: 'Create a Proton account or sign in to an existing one. After you continue, you only wait.',
+      ipInfo,
+      cycleLabel: 'One-time account step. Then KnightTrader connects by itself.',
+    });
+    window.kt.vpnPrepareSandbox?.().catch(() => {});
+  }
+
+  function showPleaseWait(ipInfo, payload = {}) {
+    setAccountPhase(false);
+    showWaitOverlay({
+      title: 'Please wait',
+      body: payload.body || 'Connecting and switching servers until a BloFin-allowed country is reached.',
+      ipInfo,
+      cycleLabel: payload.cycleLabel || 'Each server is held for 1 minute 50 seconds before the next change.',
+    });
+  }
+
   async function maybeAutoEnsureBlockedRegion() {
     if (autoEnsureStarted || ensureRunning) return;
     try {
-      const [ipInfo, state] = await Promise.all([
+      const [ipInfo, state, creds] = await Promise.all([
         window.kt.vpnGetLocation(),
         window.kt.getOnboardingState().catch(() => ({})),
+        window.kt.getCredentials().catch(() => ({})),
       ]);
       if (ipInfo?.allowed) return;
       autoEnsureStarted = true;
-      usNoticeShown = !!state?.usVpnNoticeShown;
-      const creds = await window.kt.getCredentials().catch(() => ({}));
-      const hasProton = !!(creds?.proton?.email);
-      const returning = !!(state?.protonVpnAutoconnect || state?.vpnVerified || hasProton);
-      if (!returning && !usNoticeShown) showUsNoticeOnce(ipInfo);
-      appendLog(`Geo ${ipInfo.country || '?'} not allowed — auto VPN ${returning ? 'reconnect' : 'setup'}…`);
-      const pref = state?.preferredVpnCountry || 'random';
+      const ready = !!(creds?.proton?.email && creds?.proton?.password);
+      if (el.waitEmail && creds?.proton?.email) el.waitEmail.value = creds.proton.email;
+      window.kt.vpnPrepareSandbox?.().catch(() => {});
+      if (!ready) {
+        showAccountPrompt(ipInfo);
+        appendLog('Waiting for a Proton account before automatic server changes.');
+        return;
+      }
+      showPleaseWait(ipInfo);
+      appendLog(`Geo ${ipInfo.country || '?'} not allowed — cycling servers.`);
       ensureRunning = true;
       el.btnEnsure && (el.btnEnsure.disabled = true);
       try {
-        await window.kt.vpnEnsureRoute({ preferredCountry: pref });
+        await window.kt.vpnEnsureRoute({ preferredCountry: state?.preferredVpnCountry || 'random' });
       } finally {
         ensureRunning = false;
         el.btnEnsure && (el.btnEnsure.disabled = false);
@@ -275,45 +312,40 @@
     } catch (_) {}
   }
 
-  function showUsNoticeOnce(ipInfo, payload = {}) {
-    if (usNoticeShown) return;
-    usNoticeShown = true;
-    window.kt.setOnboardingState({ usVpnNoticeShown: true }).catch(() => {});
-    showWaitOverlay({
-      title: payload.title || (ipInfo?.country === 'US'
-        ? 'You are in the United States — VPN required'
-        : 'VPN required for BloFin'),
-      body: payload.body || 'Create a free Proton account, or sign in if you already have Proton VPN. This notice is shown once.',
-      ipInfo: ipInfo || payload.ipInfo,
-      steps: payload.steps || [
-        'Create a Proton account, or choose Sign in if you already have one.',
-        'In the ProtonVPN app, connect to a free server in Netherlands, Japan, Romania, or Poland.',
-        'After this first login, KnightTrader reconnects on later launches. You only wait.',
-      ],
-      cycle: 1,
-      cycleLabel: 'Shown once. Pick create or sign in, then wait.',
-    });
-  }
-
   function signInExistingProton() {
-    appendLog('Opening Proton sign-in for an existing account…');
+    appendLog('Opening Proton sign-in. The Proton app already on this PC is not opened.');
     window.kt.vpnOpenSignup('protonLogin');
-    openProtonDesktopApp();
+    window.kt.vpnPrepareSandbox?.().catch(() => {});
   }
 
   function createProtonAccount() {
-    appendLog('Opening Proton account signup…');
+    appendLog('Opening Proton account signup.');
     window.kt.vpnOpenSignup('proton');
+    window.kt.vpnPrepareSandbox?.().catch(() => {});
+  }
+
+  async function continueAfterAccount() {
+    const email = el.waitEmail?.value?.trim() || '';
+    const password = el.waitPassword?.value || '';
+    if (!email || !password) {
+      appendLog('Enter the Proton email and password from the account you just created or signed in to.');
+      return;
+    }
+    await window.kt.saveCredentials({ proton: { email, password } });
+    await window.kt.markOnboardingStep('protonAccount').catch(() => {});
+    await window.kt.markOnboardingStep('protonSave').catch(() => {});
+    showPleaseWait();
+    appendLog('Saved Proton login. Please wait while servers change.');
+    await runEnsure();
   }
 
   async function openProtonDesktopApp() {
-    appendLog('Opening ProtonVPN desktop app…');
+    appendLog('Preparing the sandboxed Proton copy. The system Proton install is left alone.');
     try {
       const res = await window.kt.vpnOpenProtonApp();
-      if (res?.ok) appendLog('ProtonVPN app launched — sign in and connect to NL, JP, RO, or PL.');
-      else appendLog(res?.error || 'ProtonVPN not installed yet — running auto-install…');
+      appendLog(res?.message || 'Sandboxed Proton files are in KnightTrader app data.');
     } catch (e) {
-      appendLog(`Open ProtonVPN failed: ${e.message}`);
+      appendLog(`Sandbox prepare failed: ${e.message}`);
     }
   }
 
@@ -322,9 +354,9 @@
   el.btnProton?.addEventListener('click', () => openProtonDesktopApp());
   el.btnSignin?.addEventListener('click', () => signInExistingProton());
   el.btnCreate?.addEventListener('click', () => createProtonAccount());
-  el.btnWaitProton?.addEventListener('click', () => openProtonDesktopApp());
   el.btnWaitSignin?.addEventListener('click', () => signInExistingProton());
   el.btnWaitCreate?.addEventListener('click', () => createProtonAccount());
+  el.btnWaitContinue?.addEventListener('click', () => continueAfterAccount());
   el.btnWaitTab?.addEventListener('click', () => {
     try { document.querySelector('.nav-item[data-tab="vpn"]')?.click(); } catch (_) {}
   });

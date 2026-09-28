@@ -3548,16 +3548,16 @@ function registerIPC() {
       } catch (_) {}
       const level = payload.step === 'connected' || payload.step === 'ready' ? 'success' : 'info';
       appendLog(`[VPN] ${payload.message || payload.title || payload.step}`, level);
-      const noticeOnce = payload.step === 'user-notify' && payload.notifyUser && (payload.cycle || 1) <= 1;
-      if (noticeOnce && !storeData.onboarding?.usVpnNoticeShown && Notification.isSupported()) {
+      const noticeOnce = (payload.step === 'user-notify' || payload.step === 'please-wait') && payload.notifyUser;
+      if (noticeOnce && !storeData.onboarding?.vpnWaitNoticeShown && Notification.isSupported()) {
         try {
           const n = new Notification({
-            title: String(payload.title || 'VPN setup'),
-            body: String(payload.body || payload.message || ''),
+            title: 'Please wait',
+            body: 'Connecting and switching servers until a BloFin-allowed country is reached.',
             silent: false,
           });
           n.show();
-          storeData.onboarding = { ...(storeData.onboarding || {}), usVpnNoticeShown: true };
+          storeData.onboarding = { ...(storeData.onboarding || {}), vpnWaitNoticeShown: true };
           saveStore(storeData);
         } catch (_) {}
       }
@@ -3575,6 +3575,10 @@ function registerIPC() {
       ...(opts || {}),
       preferredCountry,
       userDataPath: app.getPath('userData'),
+      credentials: {
+        email: storeData.proton?.email || '',
+        password: storeData.proton?.password || '',
+      },
       emit,
     });
     if (result?.allowed) {
@@ -3592,15 +3596,22 @@ function registerIPC() {
   ipcMain.handle('vpn-onboarding-check', () => getVpnOnboarding().checkLocation());
   ipcMain.handle('vpn-onboarding-auto-setup', (_e, opts) => getVpnOnboarding().runAutoSetup(opts || {}));
   ipcMain.handle('vpn-onboarding-stop-poll', () => { getVpnOnboarding().stopGeoPoll(); return { ok: true }; });
+  ipcMain.handle('vpn-prepare-sandbox', async () => {
+    const { ensureProtonSandbox } = require('./lib/proton-sandbox');
+    return ensureProtonSandbox(app.getPath('userData'), (payload) => {
+      appendLog(`[VPN] ${payload.message}`, 'info');
+    });
+  });
   ipcMain.handle('vpn-open-proton-app', async () => {
-    const ob = getVpnOnboarding();
-    ob.ensureDirs();
-    const launched = await ob.launchProtonApp();
-    if (launched?.ok) return launched;
-    ob.installProtonVpnApp()
-      .then((res) => { if (res?.ok) return ob.launchProtonApp(); })
-      .catch((e) => appendLog(`⚠ ProtonVPN install: ${e?.message || e}`, 'warn'));
-    return { ok: false, installing: true, error: launched?.error || 'ProtonVPN is not installed yet. Installing in the background.' };
+    const { ensureProtonSandbox } = require('./lib/proton-sandbox');
+    const sand = await ensureProtonSandbox(app.getPath('userData'), () => {});
+    return {
+      ok: true,
+      sandboxed: true,
+      path: sand.appDir,
+      launched: false,
+      message: 'Proton files are in KnightTrader app data. The Proton install already on this PC is not opened.',
+    };
   });
   ipcMain.handle('vpn-open-signup', (_e, type) => { openSignupWindow(type); return { ok: true }; });
   ipcMain.handle('get-signup-params', () => pendingSignupContext);

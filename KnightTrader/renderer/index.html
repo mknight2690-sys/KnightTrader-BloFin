@@ -1346,19 +1346,27 @@
     <div id="vpn-wait-overlay" class="vpn-wait-overlay hidden" role="alertdialog" aria-modal="true" aria-labelledby="vpn-wait-title">
       <div class="vpn-wait-card">
         <div class="vpn-wait-badge">VPN setup — KnightTrader is working</div>
-        <h2 id="vpn-wait-title">Connecting to a BloFin-allowed country…</h2>
+        <h2 id="vpn-wait-title">Please wait</h2>
         <p id="vpn-wait-country" class="vpn-wait-country">Detected: —</p>
-        <p id="vpn-wait-body" class="first-run-lead">BloFin is not available from your current location. Follow the steps below.</p>
-        <ol id="vpn-wait-steps" class="vpn-wait-steps">
-          <li>ProtonVPN will open — sign in with your free Proton account.</li>
-          <li>Connect to a <strong>free</strong> server in Netherlands, Japan, Romania, or Poland.</li>
-          <li>Wait 1–2 minutes. KnightTrader checks automatically every few seconds.</li>
-        </ol>
-        <p id="vpn-wait-cycle" class="vpn-wait-cycle">Auto-check #1 in progress…</p>
+        <p id="vpn-wait-body" class="first-run-lead">KnightTrader is connecting and will change server after 1 minute 50 seconds until BloFin allows the country.</p>
+        <div id="vpn-wait-account">
+          <p class="first-run-lead">Create a Proton account or sign in to one you already have. Complete the CAPTCHA in the popup, then enter that login here.</p>
+          <div class="field">
+            <label for="vpn-wait-email">Proton email</label>
+            <input type="email" id="vpn-wait-email" placeholder="you@proton.me" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="vpn-wait-password">Proton password</label>
+            <input type="password" id="vpn-wait-password" placeholder="Proton password" autocomplete="off" />
+          </div>
+          <div class="first-run-actions">
+            <button type="button" id="vpn-wait-create" class="btn-primary">Create Proton account</button>
+            <button type="button" id="vpn-wait-signin" class="btn-secondary">Sign in to existing Proton</button>
+            <button type="button" id="vpn-wait-continue" class="btn-primary">Continue — connect automatically</button>
+          </div>
+        </div>
+        <p id="vpn-wait-cycle" class="vpn-wait-cycle">Please wait…</p>
         <div class="first-run-actions">
-          <button type="button" id="vpn-wait-create" class="btn-primary">Create Proton account</button>
-          <button type="button" id="vpn-wait-signin" class="btn-secondary">Sign in to existing Proton VPN</button>
-          <button type="button" id="vpn-wait-open-proton" class="btn-secondary">Open ProtonVPN</button>
           <button type="button" id="vpn-wait-show-tab" class="btn-ghost">View VPN tab</button>
         </div>
         <p class="vpn-wait-footnote muted">Do not trade until this message goes away and the VPN tab shows green.</p>
