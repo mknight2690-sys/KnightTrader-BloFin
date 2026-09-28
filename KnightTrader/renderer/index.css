@@ -233,6 +233,14 @@ html, body {
 }
 
 .nav-item:hover { background: rgba(255,255,255,0.05); color: var(--text2); }
+.nav-item.nav-attention {
+  animation: nav-attn 1.2s ease-in-out infinite;
+  border-color: var(--warn, #f5a623);
+}
+@keyframes nav-attn {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0.35); }
+  50% { box-shadow: 0 0 0 4px rgba(245, 166, 35, 0.15); }
+}
 .nav-item.active {
   background: var(--accent-dim);
   color: var(--accent);
@@ -1598,6 +1606,62 @@ webview.webview-parked {
 .vpn-onboard-banner.hidden { display: none; }
 .vpn-onboard-banner-title { font-weight: 700; color: var(--accent); font-size: 13px; }
 .vpn-onboard-banner-text { font-size: 12px; color: var(--text2); margin-top: 4px; }
+
+.vpn-wait-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  background: rgba(5, 8, 12, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  backdrop-filter: blur(4px);
+}
+.vpn-wait-overlay.hidden { display: none; }
+.vpn-wait-card {
+  max-width: 520px;
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid rgba(245, 166, 35, 0.45);
+  border-radius: var(--radius);
+  padding: 24px 26px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+.vpn-wait-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--warn, #f5a623);
+  margin-bottom: 10px;
+}
+.vpn-wait-country {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--warn, #f5a623);
+  margin: 8px 0 12px;
+}
+.vpn-wait-steps {
+  margin: 12px 0 14px 20px;
+  display: grid;
+  gap: 8px;
+  color: var(--text2);
+  font-size: 14px;
+}
+.vpn-wait-cycle {
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  color: var(--accent);
+  margin-bottom: 16px;
+  animation: vpn-pulse 2s ease-in-out infinite;
+}
+@keyframes vpn-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.vpn-wait-footnote { font-size: 12px; margin-top: 12px; text-align: center; }
 
 .first-run-overlay {
   position: fixed;

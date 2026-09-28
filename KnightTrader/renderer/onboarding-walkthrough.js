@@ -207,6 +207,19 @@
     }
     if (stepId === 'vpn') {
       appendSetupLog('Ensuring BloFin-allowed VPN route…');
+      try { document.querySelector('.nav-item[data-tab="vpn"]')?.click(); } catch (_) {}
+      window.handleVpnUserNotify?.({
+        step: 'user-notify',
+        notifyUser: true,
+        title: 'VPN setup — follow the steps',
+        body: 'KnightTrader will keep checking until ProtonVPN shows an allowed country.',
+        steps: [
+          'ProtonVPN opens automatically — sign in with your free Proton account.',
+          'Connect to Netherlands, Japan, Romania, or Poland (free servers).',
+          'Wait 1–2 minutes. This screen updates automatically — do not close the app.',
+        ],
+        cycle: 0,
+      });
       const res = await window.kt.vpnEnsureRoute({ preferredCountry: el.vpnCountry?.value || 'random' });
       if (res?.allowed) {
         await window.kt.markOnboardingStep('vpn');

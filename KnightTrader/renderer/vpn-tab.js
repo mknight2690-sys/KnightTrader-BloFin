@@ -1,4 +1,4 @@
-// VPN tab — live country display + BloFin route verification.
+// VPN tab + global VPN wait overlay for brand-new users (US / blocked regions).
 (() => {
   const $ = (id) => document.getElementById(id);
 
@@ -19,12 +19,21 @@
     btnVerify: $('btn-vpn-tab-verify'),
     btnProton: $('btn-vpn-tab-proton'),
     btnDisconnect: $('btn-vpn-tab-disconnect'),
+    waitOverlay: $('vpn-wait-overlay'),
+    waitTitle: $('vpn-wait-title'),
+    waitCountry: $('vpn-wait-country'),
+    waitBody: $('vpn-wait-body'),
+    waitSteps: $('vpn-wait-steps'),
+    waitCycle: $('vpn-wait-cycle'),
+    btnWaitProton: $('vpn-wait-open-proton'),
+    btnWaitTab: $('vpn-wait-show-tab'),
   };
 
   const FLAGS = { NL: '🇳🇱', JP: '🇯🇵', RO: '🇷🇴', PL: '🇵🇱', MX: '🇲🇽', US: '🇺🇸', CA: '🇨🇦', SG: '🇸🇬' };
+  const HARD_BLOCKED = new Set(['US', 'CA', 'SG']);
   let pollTimer = null;
   let ensureRunning = false;
-  let lastAllowed = null;
+  let autoEnsureStarted = false;
 
   function appendLog(line) {
     if (!el.log) return;
@@ -37,14 +46,47 @@
     el.navBadge?.classList.toggle('hidden', !show);
   }
 
+  function showWaitOverlay(payload = {}) {
+    if (!el.waitOverlay) return;
+    el.waitOverlay.classList.remove('hidden');
+    if (payload.title && el.waitTitle) el.waitTitle.textContent = payload.title;
+    if (payload.body && el.waitBody) el.waitBody.textContent = payload.body;
+    const code = payload.ipInfo?.country || '';
+    const name = payload.ipInfo?.countryName || code || 'unknown';
+    const flag = FLAGS[code] || '🌍';
+    if (el.waitCountry) {
+      el.waitCountry.textContent = code
+        ? `Currently detected: ${flag} ${name} (${code})`
+        : 'Checking your location…';
+    }
+    if (Array.isArray(payload.steps) && el.waitSteps) {
+      el.waitSteps.innerHTML = payload.steps.map((s) => `<li>${s}</li>`).join('');
+    }
+    if (el.waitCycle) {
+      el.waitCycle.textContent = payload.cycleLabel
+        || (payload.cycle ? `Auto-check #${payload.cycle} — retrying until allowed country…` : 'Auto-check in progress…');
+    }
+    try {
+      document.querySelector('.nav-item[data-tab="vpn"]')?.classList.add('nav-attention');
+    } catch (_) {}
+  }
+
+  function hideWaitOverlay() {
+    el.waitOverlay?.classList.add('hidden');
+    try {
+      document.querySelector('.nav-item[data-tab="vpn"]')?.classList.remove('nav-attention');
+    } catch (_) {}
+  }
+
   function renderStatus(ipInfo, stable = false) {
     const allowed = !!ipInfo?.allowed;
-    lastAllowed = allowed;
     setNavBadge(!allowed);
 
     if (el.orb) {
-      el.orb.classList.remove('ok', 'warn');
-      el.orb.classList.add(allowed ? 'ok' : 'warn');
+      el.orb.classList.remove('ok', 'warn', 'err');
+      if (allowed) el.orb.classList.add('ok');
+      else if (HARD_BLOCKED.has(ipInfo?.country)) el.orb.classList.add('err');
+      else el.orb.classList.add('warn');
     }
     el.warn?.classList.toggle('hidden', allowed);
 
@@ -56,7 +98,7 @@
     if (el.title) {
       el.title.textContent = allowed
         ? (stable ? 'BloFin route verified' : 'Allowed country detected')
-        : 'Not BloFin-allowed';
+        : (HARD_BLOCKED.has(code) ? 'Blocked region — VPN required' : 'Not BloFin-allowed');
     }
     if (el.detail) {
       el.detail.textContent = allowed
@@ -75,7 +117,45 @@
         : 'External IP: unavailable';
     }
     if (el.updated) el.updated.textContent = `Last checked: ${new Date().toLocaleTimeString()}`;
+
+    if (allowed) hideWaitOverlay();
   }
+
+  window.handleVpnUserNotify = function handleVpnUserNotify(payload) {
+    if (payload?.dismiss) {
+      hideWaitOverlay();
+      return;
+    }
+    if (payload?.step === 'user-notify-dismiss' || payload?.dismiss === true) {
+      hideWaitOverlay();
+      return;
+    }
+    if (payload?.step === 'connected' || payload?.step === 'ready') {
+      hideWaitOverlay();
+      if (payload?.ipInfo) renderStatus(payload.ipInfo, true);
+      return;
+    }
+    if (payload?.step === 'user-notify' || payload?.notifyUser) {
+      showWaitOverlay(payload);
+      if (payload.message) appendLog(payload.message);
+      return;
+    }
+    if (payload?.step === 'wrong-country' || payload?.step === 'cycling' || payload?.step === 'polling') {
+      if (payload.ipInfo && !payload.ipInfo.allowed) {
+        showWaitOverlay({
+          title: payload.title || el.waitTitle?.textContent,
+          body: payload.message,
+          ipInfo: payload.ipInfo,
+          cycle: payload.cycle,
+          cycleLabel: payload.cycle
+            ? `Auto-check #${payload.cycle} — ${payload.message || 'still waiting…'}`
+            : undefined,
+        });
+      }
+      if (payload.message) appendLog(payload.message);
+      if (payload.ipInfo) renderStatus(payload.ipInfo, false);
+    }
+  };
 
   async function refreshStatus(stable = false) {
     try {
@@ -86,6 +166,14 @@
       }
       const ipInfo = await window.kt.vpnGetLocation();
       renderStatus(ipInfo, false);
+      if (!ipInfo?.allowed && HARD_BLOCKED.has(ipInfo?.country)) {
+        showWaitOverlay({
+          title: ipInfo.country === 'US' ? 'You are in the United States — VPN required' : 'Blocked region — VPN required',
+          body: 'KnightTrader will keep checking until ProtonVPN routes you through an allowed country.',
+          ipInfo,
+          cycle: 0,
+        });
+      }
       return { allowed: !!ipInfo?.allowed, ipInfo };
     } catch (e) {
       appendLog(`Verify failed: ${e.message}`);
@@ -156,11 +244,10 @@
       });
       if (res?.allowed) {
         appendLog(`Confirmed: ${res.ipInfo?.countryName || res.ipInfo?.country}`);
+        hideWaitOverlay();
         await refreshStatus(true);
-      } else if (res?.waitingForUser) {
-        appendLog('ProtonVPN opened — connect to NL, JP, RO, or PL and wait.');
-      } else {
-        appendLog(res?.error || 'Could not confirm BloFin route.');
+      } else if (!res?.waitingForUser) {
+        appendLog(res?.error || 'Could not confirm BloFin route yet — still cycling.');
         await refreshStatus(false);
       }
     } catch (e) {
@@ -171,9 +258,34 @@
     }
   }
 
+  async function maybeAutoEnsureBlockedRegion() {
+    if (autoEnsureStarted || ensureRunning) return;
+    try {
+      const ipInfo = await window.kt.vpnGetLocation();
+      if (ipInfo?.allowed) return;
+      autoEnsureStarted = true;
+      if (HARD_BLOCKED.has(ipInfo?.country)) {
+        showWaitOverlay({
+          title: ipInfo.country === 'US'
+            ? 'You are in the United States — VPN required'
+            : 'Blocked region — VPN required',
+          body: 'KnightTrader is starting automatic VPN setup. ProtonVPN will open — connect to Netherlands, Japan, Romania, or Poland.',
+          ipInfo,
+          cycle: 0,
+        });
+        appendLog(`Blocked region (${ipInfo.country}) — starting auto VPN cycle…`);
+        runEnsure();
+      }
+    } catch (_) {}
+  }
+
   el.btnVerify?.addEventListener('click', () => refreshStatus(true));
   el.btnEnsure?.addEventListener('click', () => runEnsure());
   el.btnProton?.addEventListener('click', () => window.kt.vpnOpenSignup('protonDownloads'));
+  el.btnWaitProton?.addEventListener('click', () => window.kt.vpnOpenSignup('protonDownloads'));
+  el.btnWaitTab?.addEventListener('click', () => {
+    try { document.querySelector('.nav-item[data-tab="vpn"]')?.click(); } catch (_) {}
+  });
   el.btnDisconnect?.addEventListener('click', async () => {
     await window.kt.vpnDisconnect();
     appendLog('WireGuard disconnected.');
@@ -181,11 +293,7 @@
   });
 
   window.kt.onVpnOnboardingStatus((payload) => {
-    if (payload?.message) appendLog(payload.message);
-    if (payload?.ipInfo) renderStatus(payload.ipInfo, payload.step === 'connected');
-    if (payload?.step === 'connected' || payload?.step === 'ready') {
-      refreshStatus(true);
-    }
+    window.handleVpnUserNotify(payload);
   });
 
   window.initVpnTab = async function initVpnTab() {
@@ -195,13 +303,15 @@
   };
 
   window.stopVpnTabPoll = stopPoll;
-
   window.refreshVpnTabStatus = refreshStatus;
+  window.startVpnAutoEnsure = runEnsure;
 
   window.checkVpnNavBadge = async () => {
     try {
       const ipInfo = await window.kt.vpnGetLocation();
       setNavBadge(!ipInfo?.allowed);
+      if (!ipInfo?.allowed) renderStatus(ipInfo, false);
+      await maybeAutoEnsureBlockedRegion();
     } catch (_) {}
   };
 

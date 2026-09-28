@@ -1338,6 +1338,27 @@
       </div>
     </div>
 
+    <!-- VPN wait — shown while auto-connect cycles (especially US / blocked regions) -->
+    <div id="vpn-wait-overlay" class="vpn-wait-overlay hidden" role="alertdialog" aria-modal="true" aria-labelledby="vpn-wait-title">
+      <div class="vpn-wait-card">
+        <div class="vpn-wait-badge">VPN setup — KnightTrader is working</div>
+        <h2 id="vpn-wait-title">Connecting to a BloFin-allowed country…</h2>
+        <p id="vpn-wait-country" class="vpn-wait-country">Detected: —</p>
+        <p id="vpn-wait-body" class="first-run-lead">BloFin is not available from your current location. Follow the steps below.</p>
+        <ol id="vpn-wait-steps" class="vpn-wait-steps">
+          <li>ProtonVPN will open — sign in with your free Proton account.</li>
+          <li>Connect to a <strong>free</strong> server in Netherlands, Japan, Romania, or Poland.</li>
+          <li>Wait 1–2 minutes. KnightTrader checks automatically every few seconds.</li>
+        </ol>
+        <p id="vpn-wait-cycle" class="vpn-wait-cycle">Auto-check #1 in progress…</p>
+        <div class="first-run-actions">
+          <button type="button" id="vpn-wait-open-proton" class="btn-primary">Open ProtonVPN</button>
+          <button type="button" id="vpn-wait-show-tab" class="btn-secondary">View VPN tab</button>
+        </div>
+        <p class="vpn-wait-footnote muted">Do not trade until this message goes away and the VPN tab shows green.</p>
+      </div>
+    </div>
+
     <!-- Returning user startup wait -->
     <div id="returning-user-overlay" class="first-run-overlay hidden" role="status" aria-live="polite">
       <div class="first-run-modal">

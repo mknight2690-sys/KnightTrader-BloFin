@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, protocol, webContents, session, Tray, nativeImage, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, protocol, webContents, session, Tray, nativeImage, Menu, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -3477,7 +3477,24 @@ function registerIPC() {
           mainWindow.webContents.send('vpn-onboarding-status', payload);
         }
       } catch (_) {}
-      appendLog(`[VPN] ${payload.message}`, payload.step === 'connected' || payload.step === 'ready' ? 'success' : 'info');
+      const level = payload.step === 'connected' || payload.step === 'ready' ? 'success' : 'info';
+      appendLog(`[VPN] ${payload.message || payload.title || payload.step}`, level);
+      if (payload.step === 'user-notify' && payload.notifyUser && Notification.isSupported()) {
+        try {
+          const n = new Notification({
+            title: String(payload.title || 'VPN setup'),
+            body: String(payload.body || payload.message || ''),
+            silent: false,
+          });
+          n.show();
+        } catch (_) {}
+      }
+      if (payload.speak && process.platform === 'win32') {
+        try {
+          const ps = `New-Object -ComObject SAPI.SpVoice | ForEach-Object { $_.Speak(${JSON.stringify(String(payload.speak))}, 1) }`;
+          spawn('powershell.exe', ['-NoProfile', '-Command', ps], { windowsHide: true });
+        } catch (_) {}
+      }
     };
     const result = await ensureBlofinAllowedRoute({
       ...(opts || {}),
