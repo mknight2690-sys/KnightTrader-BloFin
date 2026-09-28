@@ -206,9 +206,14 @@
       return;
     }
     if (stepId === 'vpn') {
-      appendSetupLog('Auto VPN setup…');
-      await window.kt.vpnOnboardingAutoSetup({ preferredCountry: el.vpnCountry?.value || 'random' });
-      await window.kt.markOnboardingStep('vpn');
+      appendSetupLog('Ensuring BloFin-allowed VPN route…');
+      const res = await window.kt.vpnEnsureRoute({ preferredCountry: el.vpnCountry?.value || 'random' });
+      if (res?.allowed) {
+        await window.kt.markOnboardingStep('vpn');
+        advanceWalk();
+      } else {
+        setStatus('Connect ProtonVPN to NL, JP, RO, or PL — KnightTrader will verify when ready.', 'pending');
+      }
       return;
     }
     if (copy.action === 'defender') {
@@ -372,7 +377,7 @@
     const res = await window.kt.vpnOnboardingCheck();
     appendSetupLog(res?.allowed ? 'Location OK' : 'VPN may be required');
   });
-  el.btnVpnAuto?.addEventListener('click', () => window.kt.vpnOnboardingAutoSetup({ preferredCountry: el.vpnCountry?.value || 'random' }));
+  el.btnVpnAuto?.addEventListener('click', () => window.kt.vpnEnsureRoute({ preferredCountry: el.vpnCountry?.value || 'random' }));
   el.btnSignupProton?.addEventListener('click', () => openSignup('proton'));
   el.btnSignupProtonMail?.addEventListener('click', () => openSignup('protonMail'));
   el.btnSignupGmail?.addEventListener('click', () => openSignup('gmail'));
@@ -392,7 +397,7 @@
     const msg = payload?.message || '';
     if (msg) appendSetupLog(msg);
     if ((payload?.step === 'connected' || payload?.step === 'ready') && currentStepId() === 'vpn') {
-      advanceWalk();
+      window.kt.markOnboardingStep('vpn').then(() => advanceWalk());
     }
   });
 

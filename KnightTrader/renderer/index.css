@@ -624,6 +624,8 @@ select { appearance: none; padding-right: 30px; }
 }
 .vpn-orb.ok { background: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
 .vpn-orb.warn { background: var(--warn, #f5a623); box-shadow: 0 0 12px rgba(245,166,35,0.6); }
+.vpn-orb.err { background: var(--error, #ef4444); box-shadow: 0 0 12px rgba(239,68,68,0.5); }
+#vpn-tab-country-display { color: var(--text); letter-spacing: -0.02em; }
 .vpn-status-text { display: flex; flex-direction: column; gap: 2px; }
 #vpn-status-title { font-weight: 700; color: var(--text); font-size: 15px; }
 #vpn-status-detail { color: var(--text2); font-size: 13px; }

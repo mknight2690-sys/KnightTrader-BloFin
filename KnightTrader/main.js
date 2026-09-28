@@ -5,6 +5,7 @@ const { pathToFileURL } = require('url');
 const { BlohunterBridge } = require('./blohunter-bridge');
 const vpn = require('./vpn');
 const { VpnOnboarding } = require('./lib/vpn-onboarding');
+const { ensureBlofinAllowedRoute, verifyAllowedStable } = require('./lib/vpn-ensure');
 const {
   evaluateOnboarding,
   markStepComplete,
@@ -3467,6 +3468,30 @@ function registerIPC() {
   ipcMain.handle('vpn-connect',       (_e, code) => vpn.connectCountry(code));
   ipcMain.handle('vpn-disconnect',    () => vpn.disconnect());
   ipcMain.handle('vpn-allowed',       () => vpn.allowedCountryList());
+  ipcMain.handle('vpn-get-location',  () => vpn.getExternalIpInfo());
+  ipcMain.handle('vpn-verify-stable', () => verifyAllowedStable(2, 2500));
+  ipcMain.handle('vpn-ensure-route', async (_e, opts) => {
+    const emit = (payload) => {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('vpn-onboarding-status', payload);
+        }
+      } catch (_) {}
+      appendLog(`[VPN] ${payload.message}`, payload.step === 'connected' || payload.step === 'ready' ? 'success' : 'info');
+    };
+    const result = await ensureBlofinAllowedRoute({
+      ...(opts || {}),
+      userDataPath: app.getPath('userData'),
+      emit,
+    });
+    if (result?.allowed) {
+      storeData.onboarding = markStepComplete(storeData.onboarding, 'vpn');
+      storeData.onboarding.vpnVerified = true;
+      if (result.method === 'direct') storeData.onboarding.locationAllowed = true;
+      saveStore(storeData);
+    }
+    return result;
+  });
   ipcMain.handle('vpn-onboarding-check', () => getVpnOnboarding().checkLocation());
   ipcMain.handle('vpn-onboarding-auto-setup', (_e, opts) => getVpnOnboarding().runAutoSetup(opts || {}));
   ipcMain.handle('vpn-onboarding-stop-poll', () => { getVpnOnboarding().stopGeoPoll(); return { ok: true }; });

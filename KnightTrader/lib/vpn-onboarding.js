@@ -143,8 +143,13 @@ class VpnOnboarding {
       this.status('connecting', `Connecting WireGuard tunnel for ${c.name}…`, { country: c.code });
       const res = await vpn.connectCountry(c.code);
       if (res.ok && res.routedThroughAllowed) {
-        this.status('connected', `Routed through ${c.name} (${res.ipInfo?.ip || 'ok'}).`, { country: c.code, ipInfo: res.ipInfo });
-        return { ok: true, country: c.code, ipInfo: res.ipInfo };
+        await sleep(2000);
+        const ipInfo = await vpn.getExternalIpInfo();
+        if (ipInfo.allowed) {
+          this.status('connected', `Routed through ${c.name} (${ipInfo.ip || 'ok'}).`, { country: c.code, ipInfo });
+          return { ok: true, country: c.code, ipInfo };
+        }
+        this.status('retry', `${c.name} tunnel up but geo shows ${ipInfo.countryName || ipInfo.country} — trying next…`, { ipInfo });
       }
       if (res.ok) {
         this.status('retry', `${c.name} connected but geo still not allowed — trying next…`, { ipInfo: res.ipInfo });
@@ -165,27 +170,6 @@ class VpnOnboarding {
     return { ok: true, path: app };
   }
 
-  startGeoPoll(intervalMs = 15000, maxMs = 20 * 60 * 1000) {
-    this.stopGeoPoll();
-    const started = Date.now();
-    this.status('polling', 'Waiting for VPN route to reach a BloFin-allowed country…');
-    this._pollTimer = setInterval(async () => {
-      if (Date.now() - started > maxMs) {
-        this.stopGeoPoll();
-        this.status('poll-timeout', 'Still not in an allowed country. Try a different free ProtonVPN server.');
-        return;
-      }
-      const ipInfo = await vpn.getExternalIpInfo();
-      if (ipInfo.allowed) {
-        this.stopGeoPoll();
-        this.status('connected', `VPN route confirmed: ${ipInfo.countryName || ipInfo.country} (${ipInfo.ip})`, { ipInfo, allowed: true });
-      } else {
-        this.status('polling', `Current location: ${ipInfo.countryName || ipInfo.country || 'unknown'} — keep ProtonVPN connected to a free allowed country…`, { ipInfo });
-      }
-    }, intervalMs);
-    this._pollTimer.unref?.();
-  }
-
   stopGeoPoll() {
     if (this._pollTimer) {
       clearInterval(this._pollTimer);
@@ -193,27 +177,15 @@ class VpnOnboarding {
     }
   }
 
-  // Full guided flow: detect → install deps → connect configs if present → else Proton app + poll
-  async runAutoSetup({ preferredCountry } = {}) {
-    this.ensureDirs();
-    const loc = await this.checkLocation();
-    if (loc.allowed) return { ok: true, allowed: true, ipInfo: loc.ipInfo };
-
-    await this.installWireGuard();
-    await this.installProtonVpnApp();
-
-    const configs = vpn.listConfigs().filter((c) => c.allowed);
-    if (configs.length) {
-      this.status('configs', `Found ${configs.length} WireGuard config(s) — connecting automatically…`);
-      const connected = await this.connectWithConfigs(preferredCountry);
-      if (connected.ok) return { ok: true, allowed: true, ...connected };
-    } else {
-      this.status('configs-missing', 'No WireGuard configs yet. Create a free Proton account in-app, then download OpenVPN/WireGuard configs from account.protonvpn.com/downloads.');
-    }
-
-    await this.launchProtonApp();
-    this.startGeoPoll();
-    return { ok: true, allowed: false, waitingForUser: true };
+  // Delegates to vpn-ensure — never returns allowed:true without stable geo proof.
+  async runAutoSetup(opts = {}) {
+    const { ensureBlofinAllowedRoute } = require('./vpn-ensure');
+    return ensureBlofinAllowedRoute({
+      preferredCountry: opts.preferredCountry,
+      userDataPath: this.userDataPath,
+      emit: (payload) => this.status(payload.step, payload.message, payload),
+      waitForUser: opts.waitForUser !== false,
+    });
   }
 }
 

@@ -165,10 +165,8 @@ async function init() {
     try { window.kt.announceVoice('Welcome back to Knight Trader Blo Fin.'); } catch (_) {}
     appendLogLine({ ts: Date.now(), type: 'info', msg: '⏳ Returning user startup — VPN check + Hermes…' });
     try {
-      const loc = await window.kt.vpnOnboardingCheck();
-      if (!loc?.allowed) {
-        await window.kt.vpnOnboardingAutoSetup({ preferredCountry: 'random' });
-      }
+      const res = await window.kt.vpnEnsureRoute({ preferredCountry: 'random' });
+      if (res?.allowed) window.refreshVpnTabStatus?.(true);
     } catch (_) {}
     if (hermesInstalled && !dashboardRunning && !dashboardStartInFlight) {
       startHermesDashboardUi();
@@ -721,6 +719,8 @@ function switchTab(name) {
   if (name === 'trading') { initTradingTab(); }
   if (name === 'chat') { initChatTab().catch(() => {}); }
   if (name === 'credentials') { window.initCredentialsTab?.(); }
+  if (name === 'vpn') { window.initVpnTab?.(); }
+  if (name !== 'vpn') { window.stopVpnTabPoll?.(); }
   if (name === 'hermes' && hermesInstalled && !dashboardRunning && !dashboardStartInFlight) {
     startHermesDashboardUi();
   }
