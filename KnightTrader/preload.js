@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld('kt', {
   onUpdateAvailable: (cb) => ipcRenderer.on('update-available', (_e, info) => cb(info)),
   onUpdateNotAvailable: (cb) => ipcRenderer.on('update-not-available', (_, info) => cb(info)),
   onUpdateDownloaded: (cb) => ipcRenderer.on('update-downloaded', (_, info) => cb(info)),
+  onUpdateDownloadStarted: (cb) => ipcRenderer.on('update-download-started', (_, info) => cb(info)),
+  onUpdateDownloadProgress: (cb) => ipcRenderer.on('update-download-progress', (_, info) => cb(info)),
   onUpdateError: (cb) => ipcRenderer.on('update-error', (_, error) => cb(error)),
   // Window restore from tray/taskbar (single debounced channel)
   onWindowShown: (cb) => ipcRenderer.on('kt-window-shown', () => cb()),
@@ -52,6 +54,7 @@ contextBridge.exposeInMainWorld('kt', {
   onFreeModelSelected: (cb) => ipcRenderer.on('kt-free-model-selected', (_e, info) => cb(info)),
   autoSelectFreeModel: () => ipcRenderer.invoke('auto-select-free-model'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
   getUpdateStatus: () => ipcRenderer.invoke('get-update-status'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   quitAndInstallUpdate: () => ipcRenderer.invoke('quit-and-install-update'),

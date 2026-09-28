@@ -97,13 +97,20 @@
     <!-- Main Content -->
     <main id="content">
       <div id="update-banner" class="update-banner hidden">
-        <div>
+        <div class="update-banner-body">
           <div id="update-banner-title" class="update-banner-title">Update available</div>
-          <div id="update-banner-text" class="update-banner-text">Restart to install the latest version.</div>
+          <div id="update-banner-text" class="update-banner-text">Download the update, then restart to install.</div>
+          <div id="update-progress-wrap" class="update-progress-wrap hidden">
+            <div class="update-progress-track">
+              <div id="update-progress-bar" class="update-progress-bar"></div>
+            </div>
+            <span id="update-progress-label" class="update-progress-label">0%</span>
+          </div>
         </div>
         <div class="update-banner-actions">
-          <button id="btn-restart-update" class="btn-primary">Restart & Update</button>
-          <button id="btn-dismiss-update" class="btn-secondary">Later</button>
+          <button id="btn-download-update" class="btn-primary" type="button">Download Update</button>
+          <button id="btn-restart-update" class="btn-primary hidden" type="button">Restart to Install</button>
+          <button id="btn-dismiss-update" class="btn-secondary" type="button">Later</button>
         </div>
       </div>
 

@@ -82,6 +82,10 @@ const el = {
   updateBanner: $('update-banner'),
   updateBannerTitle: $('update-banner-title'),
   updateBannerText: $('update-banner-text'),
+  updateProgressWrap: $('update-progress-wrap'),
+  updateProgressBar: $('update-progress-bar'),
+  updateProgressLabel: $('update-progress-label'),
+  btnDownloadUpdate: $('btn-download-update'),
   btnRestartUpdate: $('btn-restart-update'),
   btnDismissUpdate: $('btn-dismiss-update'),
 
@@ -1123,59 +1127,11 @@ Object.entries(LINKS).forEach(([id, url]) => {
   if (elem) elem.addEventListener('click', (e) => { e.preventDefault(); window.kt.openExternal(url); });
 });
 
-// ── Update banner ───────────────────────────────────────────────
-function setUpdateBannerVisible(visible, title, text) {
-  if (!el.updateBanner) return;
-  el.updateBanner.classList.toggle('hidden', !visible);
-  if (title && el.updateBannerTitle) el.updateBannerTitle.textContent = title;
-  if (text && el.updateBannerText) el.updateBannerText.textContent = text;
-}
+// ── Update banner (step 1: download, step 2: restart) ───────────
+let updateUiState = 'idle';
+let pendingUpdateVersion = '';
 
-if (el.btnRestartUpdate) {
-  el.btnRestartUpdate.addEventListener('click', async () => {
-    el.btnRestartUpdate.disabled = true;
-    setUpdateBannerVisible(true, 'Installing update', 'Downloading if needed, then restarting…');
-    setPopupUpdateStatus('Installing update…');
-    try {
-      const res = await window.kt.quitAndInstallUpdate();
-      if (res?.ok && res?.installing) return;
-      const err = res?.error || 'Update could not be installed';
-      setUpdateBannerVisible(true, 'Update failed', err);
-      setPopupUpdateStatus(err);
-      el.btnRestartUpdate.disabled = false;
-    } catch (e) {
-      const err = e?.message || 'Update failed';
-      setUpdateBannerVisible(true, 'Update failed', err);
-      setPopupUpdateStatus(err);
-      el.btnRestartUpdate.disabled = false;
-    }
-  });
-}
-if (el.btnDismissUpdate) {
-  el.btnDismissUpdate.addEventListener('click', () => {
-    setUpdateBannerVisible(false);
-  });
-}
-
-window.kt.onUpdateAvailable((info) => {
-  setUpdateBannerVisible(true, 'Update available', 'Restart to install the latest version.');
-  setPopupUpdateStatus('Update available — restart to install');
-});
-window.kt.onUpdateNotAvailable((info) => {
-  const remote = info?.remoteVersion || info?.version || '';
-  const current = cachedAppVersion || info?.version || '';
-  if (remote && current && remote !== current) {
-    setPopupUpdateStatus(`Update ${remote} available — restart to install`);
-    setUpdateBannerVisible(true, 'Update available', `Version ${remote} is ready — click Restart & Update.`);
-    return;
-  }
-  setPopupUpdateStatus(`Up to date (${current || 'latest'})`);
-});
-window.kt.onUpdateDownloaded((info) => {
-  setUpdateBannerVisible(true, 'Update ready', 'Installing automatically in ~15 seconds. Restart now to skip the wait.');
-  setPopupUpdateStatus('Update ready — auto-restart in ~15s');
-});
-window.kt.onUpdateError((error) => {
+function formatUpdateError(error) {
   let raw = '';
   if (error && typeof error === 'object') {
     raw = error.message || error.error || JSON.stringify(error);
@@ -1184,21 +1140,152 @@ window.kt.onUpdateError((error) => {
   } else if (error != null) {
     raw = String(error);
   }
-  // electron-updater errors sometimes carry the entire response body of a
-  // failed feed fetch (an HTML 404 / Cloudflare page) as the message string.
-  // Pushing that into the menu made the whole popup render as raw HTML
-  // ("gobbledygook"). Collapse any HTML-ish / oversized payload to a short,
-  // human-readable status and log the full detail to the console instead.
   let msg = String(raw || 'Update failed');
   const looksLikeHtml = /^\s*<(!doctype|html|head|body|h1|p|br|center)/i.test(msg)
     || /<!DOCTYPE/i.test(msg)
     || /<html/i.test(msg);
-  if (looksLikeHtml) {
-    msg = 'Update check failed — check connection';
-  } else if (msg.length > 80) {
-    msg = msg.slice(0, 77) + '…';
+  if (looksLikeHtml) msg = 'Update failed — check your connection';
+  else if (msg.length > 80) msg = msg.slice(0, 77) + '…';
+  return msg;
+}
+
+function setUpdateProgress(percent) {
+  const pct = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  if (el.updateProgressWrap) el.updateProgressWrap.classList.toggle('hidden', false);
+  if (el.updateProgressBar) el.updateProgressBar.style.width = `${pct}%`;
+  if (el.updateProgressLabel) el.updateProgressLabel.textContent = `${pct}%`;
+}
+
+function hideUpdateProgress() {
+  if (el.updateProgressWrap) el.updateProgressWrap.classList.add('hidden');
+  if (el.updateProgressBar) el.updateProgressBar.style.width = '0%';
+  if (el.updateProgressLabel) el.updateProgressLabel.textContent = '0%';
+}
+
+function applyUpdateUiState(state, version) {
+  updateUiState = state;
+  if (version) pendingUpdateVersion = version;
+
+  const verLabel = pendingUpdateVersion ? ` v${pendingUpdateVersion}` : '';
+
+  if (el.btnDownloadUpdate) {
+    el.btnDownloadUpdate.classList.toggle('hidden', state === 'ready' || state === 'installing');
+    el.btnDownloadUpdate.disabled = state === 'downloading' || state === 'installing';
+    el.btnDownloadUpdate.textContent = state === 'error' ? 'Retry Download' : 'Download Update';
   }
-  console.error('[update] error:', raw);
+  if (el.btnRestartUpdate) {
+    el.btnRestartUpdate.classList.toggle('hidden', state !== 'ready');
+    el.btnRestartUpdate.disabled = state === 'installing';
+  }
+
+  if (state === 'available') {
+    setUpdateBannerVisible(true, `Update available${verLabel}`, 'Step 1: download the update. Step 2: restart to install.');
+    hideUpdateProgress();
+    setPopupUpdateStatus(`Update${verLabel} available — download first`);
+  } else if (state === 'downloading') {
+    setUpdateBannerVisible(true, `Downloading update${verLabel}`, 'Do not close the app until the download finishes.');
+    setPopupUpdateStatus(`Downloading update${verLabel}…`);
+  } else if (state === 'ready') {
+    setUpdateBannerVisible(true, `Update ready${verLabel}`, 'Download complete. Click Restart to Install when you are ready.');
+    hideUpdateProgress();
+    setPopupUpdateStatus(`Update${verLabel} ready — restart to install`);
+  } else if (state === 'installing') {
+    setUpdateBannerVisible(true, 'Installing update', 'The app will close and reopen shortly…');
+    setPopupUpdateStatus('Installing update…');
+  } else if (state === 'error') {
+    setUpdateBannerVisible(true, 'Update download failed', 'Try Download Update again, or use Menu → Check for updates.');
+    hideUpdateProgress();
+  }
+}
+
+function setUpdateBannerVisible(visible, title, text) {
+  if (!el.updateBanner) return;
+  el.updateBanner.classList.toggle('hidden', !visible);
+  if (title && el.updateBannerTitle) el.updateBannerTitle.textContent = title;
+  if (text && el.updateBannerText) el.updateBannerText.textContent = text;
+}
+
+async function downloadUpdateFromBanner() {
+  if (!el.btnDownloadUpdate) return;
+  el.btnDownloadUpdate.disabled = true;
+  applyUpdateUiState('downloading', pendingUpdateVersion);
+  setUpdateProgress(0);
+  try {
+    const res = await window.kt.downloadUpdate();
+    if (res?.ok) {
+      applyUpdateUiState('ready', res.version || pendingUpdateVersion);
+      return;
+    }
+    const err = res?.error || 'Download failed';
+    applyUpdateUiState('error', pendingUpdateVersion);
+    setUpdateBannerVisible(true, 'Update download failed', err);
+    setPopupUpdateStatus(err);
+    if (el.btnDownloadUpdate) el.btnDownloadUpdate.disabled = false;
+  } catch (e) {
+    const err = e?.message || 'Download failed';
+    applyUpdateUiState('error', pendingUpdateVersion);
+    setUpdateBannerVisible(true, 'Update download failed', err);
+    setPopupUpdateStatus(err);
+    if (el.btnDownloadUpdate) el.btnDownloadUpdate.disabled = false;
+  }
+}
+
+if (el.btnDownloadUpdate) {
+  el.btnDownloadUpdate.addEventListener('click', () => { downloadUpdateFromBanner(); });
+}
+if (el.btnRestartUpdate) {
+  el.btnRestartUpdate.addEventListener('click', async () => {
+    el.btnRestartUpdate.disabled = true;
+    applyUpdateUiState('installing', pendingUpdateVersion);
+    setPopupUpdateStatus('Installing update…');
+    try {
+      const res = await window.kt.quitAndInstallUpdate();
+      if (res?.ok && res?.installing) return;
+      const err = res?.error || 'Install failed — download the update first';
+      applyUpdateUiState('ready', pendingUpdateVersion);
+      setUpdateBannerVisible(true, 'Install failed', err);
+      setPopupUpdateStatus(err);
+      el.btnRestartUpdate.disabled = false;
+    } catch (e) {
+      const err = e?.message || 'Install failed';
+      applyUpdateUiState('ready', pendingUpdateVersion);
+      setUpdateBannerVisible(true, 'Install failed', err);
+      setPopupUpdateStatus(err);
+      el.btnRestartUpdate.disabled = false;
+    }
+  });
+}
+if (el.btnDismissUpdate) {
+  el.btnDismissUpdate.addEventListener('click', () => {
+    if (updateUiState === 'downloading') return;
+    setUpdateBannerVisible(false);
+  });
+}
+
+window.kt.onUpdateAvailable((info) => {
+  applyUpdateUiState('available', info?.version || pendingUpdateVersion);
+});
+window.kt.onUpdateNotAvailable((info) => {
+  const current = cachedAppVersion || info?.version || '';
+  setPopupUpdateStatus(`Up to date (${current || 'latest'})`);
+});
+window.kt.onUpdateDownloadStarted((info) => {
+  applyUpdateUiState('downloading', info?.version || pendingUpdateVersion);
+  setUpdateProgress(0);
+});
+window.kt.onUpdateDownloadProgress((info) => {
+  if (info?.percent != null) setUpdateProgress(info.percent);
+});
+window.kt.onUpdateDownloaded((info) => {
+  applyUpdateUiState('ready', info?.version || pendingUpdateVersion);
+});
+window.kt.onUpdateError((error) => {
+  const msg = formatUpdateError(error);
+  console.error('[update] error:', error);
+  if (updateUiState === 'downloading' || updateUiState === 'available') {
+    applyUpdateUiState('error', pendingUpdateVersion);
+    setUpdateBannerVisible(true, 'Update download failed', msg);
+  }
   setPopupUpdateStatus(msg);
 });
 
@@ -1214,7 +1301,7 @@ window.kt.onUpdateError((error) => {
 // node.
 
 const POPUP_MENU_BUILT = { value: false };
-const DEFAULT_UPDATE_STATUS = 'Updates are automatic';
+const DEFAULT_UPDATE_STATUS = 'Check for updates in Menu';
 
 function buildPopupMenu() {
   if (!el.popupMenu || POPUP_MENU_BUILT.value) return;
@@ -1339,10 +1426,12 @@ async function checkForUpdatesFromMenu() {
     const res = await window.kt.checkForUpdates();
     if (res?.updateAvailable) {
       const remote = res.remoteVersion || res.version || 'latest';
-      setPopupUpdateStatus(res.downloaded ? `Update ${remote} ready — restart` : `Update ${remote} downloading…`);
-      setUpdateBannerVisible(true, 'Update available', res.downloaded
-        ? 'Restart to apply the latest version.'
-        : 'Downloading update — restart when ready.');
+      pendingUpdateVersion = remote;
+      if (res.downloaded || res.installerReady) {
+        applyUpdateUiState('ready', remote);
+      } else {
+        applyUpdateUiState('available', remote);
+      }
     } else if (res?.error) {
       setPopupUpdateStatus(String(res.error).slice(0, 80));
     } else if (res?.packaged === false) {

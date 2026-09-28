@@ -101,6 +101,36 @@
     }
     .status.err { color: var(--error); }
     .status.ok { color: var(--good); }
+    .progress-wrap {
+      width: 100%;
+      max-width: 280px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .progress-wrap.hidden { display: none; }
+    .progress-track {
+      flex: 1;
+      height: 8px;
+      border-radius: 99px;
+      background: rgba(255,255,255,0.08);
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--accent), var(--good));
+      transition: width 0.2s ease;
+    }
+    .progress-label {
+      min-width: 36px;
+      font-size: 12px;
+      color: var(--text2);
+      font-variant-numeric: tabular-nums;
+    }
+    button.hidden { display: none; }
     .foot {
       margin-top: 16px;
       font-size: 11px;
@@ -115,8 +145,13 @@
     <h1>An important update is required</h1>
     <p class="msg" id="msg">A critical update is required to continue using KnightTrader BloFin.</p>
     <p class="ver">Your version: <strong id="ver">—</strong> · minimum required: <strong id="min">—</strong></p>
+    <div id="progress-wrap" class="progress-wrap hidden">
+      <div class="progress-track"><div id="progress-bar" class="progress-bar"></div></div>
+      <span id="progress-label" class="progress-label">0%</span>
+    </div>
     <div class="actions">
-      <button id="update">Update &amp; Restart</button>
+      <button id="download">Download Update</button>
+      <button id="install" class="hidden">Restart to Install</button>
       <button id="manual" class="secondary">Download installer manually</button>
     </div>
     <div class="status" id="status"></div>

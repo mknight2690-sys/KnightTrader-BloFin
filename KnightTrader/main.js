@@ -90,35 +90,49 @@ function getUpdateStatusSnapshot() {
   return {
     packaged: app.isPackaged,
     currentVersion: app.getVersion(),
+    remoteVersion: pendingRemoteVersion || null,
     downloadedVersion: updateDownloadedInfo?.version || null,
     installerReady: installerFileExists(),
     pendingRestart: !!(updateDownloadedInfo && installerFileExists()),
+    downloadInProgress: updateDownloadInProgress,
   };
 }
 async function downloadFileToPath(url, dest) {
+  return downloadFileWithProgress(url, dest, null);
+}
+
+async function downloadFileWithProgress(url, dest, onProgress) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
-    const streamUrl = new URL(url);
-    const req = https.request(streamUrl, { method: 'GET' }, (res) => {
-      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        https.get(res.headers.location, (follow) => {
-          follow.pipe(file);
-          follow.on('error', reject);
+    const follow = (streamUrl) => {
+      const proto = streamUrl.protocol === 'http:' ? http : https;
+      proto.get(streamUrl, (res) => {
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          follow(new URL(res.headers.location, streamUrl));
+          return;
+        }
+        if (res.statusCode && res.statusCode >= 400) {
+          reject(new Error(`Update download failed: ${res.statusCode}`));
+          return;
+        }
+        const total = parseInt(res.headers['content-length'] || '0', 10);
+        let transferred = 0;
+        res.on('data', (chunk) => {
+          transferred += chunk.length;
+          if (total > 0 && onProgress) {
+            onProgress(Math.min(100, (transferred / total) * 100));
+          }
         });
-        return;
-      }
-      if (res.statusCode && res.statusCode >= 400) {
-        reject(new Error(`Update download failed: ${res.statusCode}`));
-        return;
-      }
-      res.pipe(file);
-      res.on('error', reject);
-    });
-    req.on('error', reject);
-    file.on('finish', () => {
-      file.close();
-      resolve(dest);
-    });
+        res.pipe(file);
+        res.on('error', reject);
+        file.on('error', reject);
+        file.on('finish', () => {
+          file.close();
+          resolve(dest);
+        });
+      }).on('error', reject);
+    };
+    follow(new URL(url));
   });
 }
 function broadcastUpdate(channel, payload) {
@@ -133,28 +147,26 @@ function broadcastUpdate(channel, payload) {
   } catch (_) {}
 }
 
-// ── electron-updater wiring ────────────────────────────────────────────────
-// autoUpdater pulls the latest release from GitHub Releases (using the
-// latest.yml + .blockmap already published as release assets), downloads
-// the NSIS package with differential patches, and applies it silently.
-// quitAndInstall() then restarts the app — no manual download, no
-// installer UI. The renderer's existing update-* IPC channels are kept
-// intact so the bottom-left "Check for updates" menu and the update
-// banner keep working unchanged.
-autoUpdater.autoDownload = true;
-autoUpdater.autoInstallOnAppQuit = true;
+// ── electron-updater wiring (two-step: download, then restart) ─────────────
+// Step 1: check-for-updates / download-update — user-initiated download with
+//         progress bar in the app.
+// Step 2: quit-and-install-update — only runs after the installer is on disk.
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = false;
 let updateDownloadedInfo = null;
-// Set to true while we're tearing the app down to install an update. While
-// this is set, the hide-on-close tray handler must NOT swallow the close
-// (which would abort app.quit() and leave the NSIS installer never running),
-// and before-quit force-destroys any surviving windows.
+let downloadedInstallerPath = null;
+let pendingRemoteVersion = null;
+let updateDownloadInProgress = false;
+let updateDownloadUsedFallback = false;
+// Set while tearing down to install. Tray close handlers must not block quit.
 let isQuittingForUpdate = false;
 
 autoUpdater.on('checking-for-update', () => {
   appendLog('🔎 Checking for updates…', 'info');
 });
 autoUpdater.on('update-available', (info) => {
-  const version = info?.version || 'latest';
+  const version = info?.version || pendingRemoteVersion || 'latest';
+  pendingRemoteVersion = normalizeVersion(version) || pendingRemoteVersion;
   appendLog(`⬆ Update available: ${version}`, 'success');
   broadcastUpdate('update-available', { version, release: info });
 });
@@ -166,67 +178,55 @@ autoUpdater.on('update-not-available', (info) => {
 autoUpdater.on('update-downloaded', (info) => {
   updateDownloadedInfo = info;
   downloadedInstallerPath = info?.downloadedFile || null;
-  appendLog(`⬇ Update ready: ${info?.version || 'latest'}${downloadedInstallerPath ? ` → ${path.basename(downloadedInstallerPath)}` : ''} — auto-restart scheduled`, 'success');
+  updateDownloadInProgress = false;
+  appendLog(`✅ Update downloaded: ${info?.version || 'latest'}${downloadedInstallerPath ? ` → ${path.basename(downloadedInstallerPath)}` : ''}`, 'success');
   broadcastUpdate('update-downloaded', { version: info?.version, release: info });
-  // Silent auto-update: every instance installs + restarts on its own so
-  // users who are away for an extended period stay current with no lapse
-  // in service. A short grace period lets any in-flight cron tick settle
-  // (the cron itself is an independent scheduled task and keeps running
-  // across the restart). The renderer's update banner still shows, so a
-  // user who is watching can restart sooner via the button.
-  scheduleSilentAutoRestart();
 });
 autoUpdater.on('error', (err) => {
-  appendLog(`⚠ Update error: ${err?.message || err}`, 'warn');
-  broadcastUpdate('update-error', err);
-});
-autoUpdater.on('download-progress', (progress) => {
-  if (progress?.percent != null) {
-    appendLog(`⬇ Update download: ${Math.round(progress.percent)}%`, 'info');
+  if (!updateDownloadInProgress) {
+    appendLog(`⚠ Update error: ${err?.message || err}`, 'warn');
+    broadcastUpdate('update-error', err);
   }
 });
-
-// Silent auto-restart timer. We wait a grace period after an update is
-// downloaded, then verify the installer file is actually on disk, destroy
-// the tray + window, and let electron-updater quitAndInstall (which runs
-// the NSIS installer and relaunches the app).
-//
-// Robustness: electron-updater sometimes fires update-downloaded but the
-// staged installer file is later missing (cleared by a prior failed
-// install, antivirus quarantine, or a partial download). Quitting at
-// that point produces a "Windows cannot find …Setup-x.y.z.exe" dialog and
-// leaves the app half-dead. So we VERIFY the file exists first and re-
-// download if it's gone before touching the tray/window.
-let autoRestartTimer = null;
-let downloadedInstallerPath = null;
+autoUpdater.on('download-progress', (progress) => {
+  const pct = progress?.percent != null ? Math.round(progress.percent) : null;
+  if (pct != null) {
+    appendLog(`⬇ Update download: ${pct}%`, 'info');
+    broadcastUpdate('update-download-progress', {
+      percent: pct,
+      transferred: progress.transferred,
+      total: progress.total,
+      bytesPerSecond: progress.bytesPerSecond,
+    });
+  }
+});
 
 function installerFileExists() {
   if (!downloadedInstallerPath) return false;
   try { return fs.existsSync(downloadedInstallerPath); } catch (_) { return false; }
 }
 
-// Make sure the installer package is present on disk. If it's missing,
-// force a fresh download and wait for it to land. Returns true when the
-// file is ready, false on timeout/failure (caller must NOT quit in that
-// case — it re-arms the restart for the next cycle instead).
-async function ensureInstallerReady(timeoutMs = 180000) {
-  if (installerFileExists()) return true;
-  appendLog('⬇ Update installer missing — re-downloading before restart…', 'info');
-  updateDownloadedInfo = null;
-  try {
-    // downloadUpdate() fetches the package again and resolves with the
-    // path; it also re-emits update-downloaded when done.
-    const result = await autoUpdater.downloadUpdate();
-    if (Array.isArray(result) && result[0]) downloadedInstallerPath = result[0];
-    else if (typeof result === 'string') downloadedInstallerPath = result;
-  } catch (e) {
-    appendLog(`⚠ Re-download attempt failed: ${e?.message || e}`, 'warn');
-  }
-  const deadline = Date.now() + timeoutMs;
-  while (!installerFileExists() && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  return installerFileExists();
+async function fallbackDirectDownload(version) {
+  const ver = normalizeVersion(version);
+  if (!ver) throw new Error('Invalid update version');
+  const tag = `v${ver}`;
+  const fileName = `KnightTrader-Blofin-Setup-${ver}.exe`;
+  const url = `https://github.com/${UPDATE_OWNER}/${UPDATE_REPO}/releases/download/${tag}/${fileName}`;
+  const destDir = path.join(app.getPath('userData'), 'pending-update');
+  fs.mkdirSync(destDir, { recursive: true });
+  const dest = path.join(destDir, fileName);
+  appendLog(`⬇ Direct download from GitHub: ${fileName}`, 'info');
+  await downloadFileWithProgress(url, dest, (percent) => {
+    broadcastUpdate('update-download-progress', { percent: Math.round(percent) });
+  });
+  if (!fs.existsSync(dest)) throw new Error('Direct download did not create installer file');
+  downloadedInstallerPath = dest;
+  updateDownloadUsedFallback = true;
+  updateDownloadedInfo = { version: ver, downloadedFile: dest };
+  updateDownloadInProgress = false;
+  broadcastUpdate('update-downloaded', { version: ver, fallback: true });
+  appendLog(`✅ Update downloaded (direct): ${fileName}`, 'success');
+  return { ok: true, version: ver, fallback: true };
 }
 
 function psSingleQuoted(value) {
@@ -390,14 +390,21 @@ async function beginSilentUpdateInstall() {
   try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
   try { app.releaseSingleInstanceLock(); } catch (_) {}
 
+  if (updateDownloadUsedFallback && downloadedInstallerPath) {
+    spawn(downloadedInstallerPath, ['/S'], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    }).unref();
+    setTimeout(() => { try { app.exit(0); } catch (_) {} }, 3000).unref?.();
+    return;
+  }
+
   // Do NOT destroy BrowserWindows before quitAndInstall(). Destroying the
   // last window fires window-all-closed → app.quit() synchronously, which
   // can exit the process before quitAndInstall() spawns the NSIS installer.
   autoUpdater.quitAndInstall(true, true);
 
-  // Safety net: if tray/close handlers block app.quit(), tear down and exit
-  // so the installer can replace files. The relaunch sentinel runs outside
-  // this process tree.
   setTimeout(() => {
     try {
       for (const w of BrowserWindow.getAllWindows()) {
@@ -406,33 +413,6 @@ async function beginSilentUpdateInstall() {
       app.exit(0);
     } catch (_) {}
   }, 6000).unref?.();
-}
-
-function scheduleSilentAutoRestart(delayMs = 15000) {
-  if (updateInstallInProgress) return;
-  if (autoRestartTimer) {
-    clearTimeout(autoRestartTimer);
-    autoRestartTimer = null;
-  }
-  appendLog(`⏱ Auto-restart in ${Math.round(delayMs / 1000)}s to install update`, 'info');
-  autoRestartTimer = setTimeout(async () => {
-    autoRestartTimer = null;
-    try {
-      const ready = await ensureInstallerReady();
-      if (!ready) {
-        appendLog('⚠ Auto-restart deferred — installer not available. Will retry on next check.', 'warn');
-        // Re-arm so the next periodic update check can re-trigger a restart.
-        scheduleSilentAutoRestart(60000);
-        return;
-      }
-      appendLog('🔄 Auto-restarting to install update…', 'success');
-      await beginSilentUpdateInstall();
-    } catch (err) {
-      appendLog(`⚠ Auto-restart failed: ${err?.message || err}`, 'warn');
-      broadcastUpdate('update-error', err);
-      scheduleSilentAutoRestart(60000);
-    }
-  }, delayMs).unref?.();
 }
 
 async function waitForDownloadedUpdate(timeoutMs = 180000) {
@@ -451,99 +431,96 @@ async function checkForUpdatesFromMain() {
     return { ok: true, packaged: false, version: current, updateAvailable: false };
   }
 
-  let primaryError = null;
-  try {
-    await autoUpdater.checkForUpdates();
-  } catch (err) {
-    primaryError = err;
-    appendLog(`⚠ electron-updater check failed: ${err?.message || err}`, 'warn');
-  }
-
   const remote = await resolveLatestRemoteVersion();
   const updateAvailable = !!(remote && compareVersions(current, remote) < 0);
 
   if (updateAvailable) {
+    pendingRemoteVersion = remote;
+    configureGenericUpdateFeed(remote);
     appendLog(`⬆ Update available: ${remote} (installed ${current})`, 'success');
     broadcastUpdate('update-available', { version: remote });
-    configureGenericUpdateFeed(remote);
-    try {
-      await autoUpdater.checkForUpdates();
-    } catch (err) {
-      appendLog(`⚠ Fallback update feed failed: ${err?.message || err}`, 'warn');
-      broadcastUpdate('update-error', err);
-      return {
-        ok: false,
-        version: current,
-        remoteVersion: remote,
-        updateAvailable: true,
-        error: err?.message || String(err),
-      };
-    }
-    await waitForDownloadedUpdate(120000);
-    if (updateDownloadedInfo && installerFileExists()) {
-      broadcastUpdate('update-downloaded', { version: updateDownloadedInfo.version || remote });
-      scheduleSilentAutoRestart();
-    }
-    return {
-      ok: true,
-      version: current,
-      remoteVersion: remote,
-      updateAvailable: true,
-      downloaded: installerFileExists(),
-      ...getUpdateStatusSnapshot(),
-    };
+  } else {
+    pendingRemoteVersion = null;
+    appendLog(`✅ Up to date: ${current}`, 'info');
+    broadcastUpdate('update-not-available', { version: current, remoteVersion: remote || current });
   }
 
-  if (primaryError) {
-    broadcastUpdate('update-error', primaryError);
-    return { ok: false, version: current, remoteVersion: remote || current, error: primaryError.message };
-  }
-
-  appendLog(`✅ Up to date: ${current}`, 'info');
-  broadcastUpdate('update-not-available', { version: current, remoteVersion: remote || current });
   return {
     ok: true,
     version: current,
     remoteVersion: remote || current,
-    updateAvailable: false,
+    updateAvailable,
+    downloaded: installerFileExists(),
     ...getUpdateStatusSnapshot(),
   };
+}
+
+async function downloadUpdateFromMain() {
+  if (!app.isPackaged) {
+    return { ok: false, error: 'Updates download only in the packaged app' };
+  }
+  if (updateDownloadInProgress) {
+    return { ok: false, error: 'Download already in progress' };
+  }
+  if (updateDownloadedInfo && installerFileExists()) {
+    return {
+      ok: true,
+      alreadyDownloaded: true,
+      version: updateDownloadedInfo.version || pendingRemoteVersion,
+    };
+  }
+
+  const current = app.getVersion();
+  const remote = pendingRemoteVersion || await resolveLatestRemoteVersion();
+  if (!remote || compareVersions(current, remote) >= 0) {
+    return { ok: false, error: 'No update available to download' };
+  }
+
+  pendingRemoteVersion = remote;
+  configureGenericUpdateFeed(remote);
+  updateDownloadInProgress = true;
+  updateDownloadUsedFallback = false;
+  broadcastUpdate('update-download-started', { version: remote });
+  appendLog(`⬇ Downloading update ${remote}…`, 'info');
+
+  try {
+    await autoUpdater.checkForUpdates();
+    updateDownloadedInfo = null;
+    downloadedInstallerPath = null;
+    const result = await autoUpdater.downloadUpdate();
+    if (Array.isArray(result) && result[0]) downloadedInstallerPath = result[0];
+    else if (typeof result === 'string') downloadedInstallerPath = result;
+
+    const ready = await waitForDownloadedUpdate(300000);
+    if (!ready) throw new Error('Update download did not complete');
+    updateDownloadInProgress = false;
+    return {
+      ok: true,
+      version: updateDownloadedInfo?.version || remote,
+    };
+  } catch (err) {
+    appendLog(`⚠ electron-updater download failed: ${err?.message || err}`, 'warn');
+    try {
+      return await fallbackDirectDownload(remote);
+    } catch (fallbackErr) {
+      updateDownloadInProgress = false;
+      const message = fallbackErr?.message || String(fallbackErr);
+      appendLog(`⚠ Direct download failed: ${message}`, 'warn');
+      broadcastUpdate('update-error', new Error(message));
+      return { ok: false, error: message };
+    }
+  }
 }
 
 async function quitAndInstallFromMain() {
   if (!app.isPackaged) {
     return { ok: false, error: 'Updates install only in the packaged app' };
   }
+  if (!updateDownloadedInfo || !installerFileExists()) {
+    return { ok: false, error: 'Download the update first, then click Restart to Install.' };
+  }
   try {
-    if (autoRestartTimer) {
-      clearTimeout(autoRestartTimer);
-      autoRestartTimer = null;
-    }
-    appendLog('🔄 Restart & Update requested…', 'info');
-    if (!updateDownloadedInfo || !installerFileExists()) {
-      await checkForUpdatesFromMain();
-    }
-    if (!updateDownloadedInfo) {
-      const remote = await resolveLatestRemoteVersion();
-      const current = app.getVersion();
-      if (remote && compareVersions(current, remote) < 0) {
-        configureGenericUpdateFeed(remote);
-        appendLog('⏳ Downloading update before restart…', 'info');
-        try {
-          await autoUpdater.checkForUpdates();
-        } catch (e) {
-          appendLog(`⚠ Pre-install download check failed: ${e.message}`, 'warn');
-        }
-        await waitForDownloadedUpdate(180000);
-      }
-    }
-    const ready = await ensureInstallerReady(180000);
-    if (!ready) {
-      const err = 'Update installer could not be downloaded';
-      appendLog(`⚠ ${err}`, 'warn');
-      broadcastUpdate('update-error', new Error(err));
-      return { ok: false, error: err };
-    }
+    appendLog('🔄 Restart to install update…', 'info');
     await beginSilentUpdateInstall();
     return { ok: true, installing: true, version: updateDownloadedInfo?.version || null };
   } catch (err) {
@@ -3044,6 +3021,7 @@ function registerIPC() {
   ipcMain.handle('get-logs',          () => logBuffer);
   ipcMain.handle('clear-logs',        () => { logBuffer = []; return { ok: true }; });
   ipcMain.handle('check-for-updates', () => checkForUpdatesFromMain());
+  ipcMain.handle('download-update', () => downloadUpdateFromMain());
   ipcMain.handle('get-update-status', () => getUpdateStatusSnapshot());
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('factory-reset', async () => {
@@ -3508,18 +3486,11 @@ app.whenReady().then(async () => {
       broadcastUpdate('update-downloaded', {
         version: updateDownloadedInfo.version || app.getVersion(),
       });
-      // Resume a download that finished while the app was still running, or
-      // install immediately if a prior restart attempt failed mid-flight.
-      scheduleSilentAutoRestart(5000);
     }
   }).catch(() => {});
 
-  // Poll for updates frequently so a newly published release triggers an
-  // immediate cascade of auto-restarts across all running instances
-  // (within ~3 min of publish). electron-updater uses conditional
-  // requests, so this stays light; 3-min cadence stays well under
-  // GitHub's unauthenticated rate limit.
-  setInterval(() => { checkForUpdatesFromMain().catch(() => {}); }, 3 * 60 * 1000).unref?.();
+  // Notify when a new release publishes — check only, never auto-download.
+  setInterval(() => { checkForUpdatesFromMain().catch(() => {}); }, 30 * 60 * 1000).unref?.();
 
   // Forced/critical update kill-switch: check the public manifest on
   // startup and every 5 minutes so a critical flag flipped while the app
