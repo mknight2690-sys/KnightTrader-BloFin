@@ -673,6 +673,7 @@ function switchTab(name) {
   try { syncWebviewParking(name); } catch (_) {}
   if (name === 'logs') { newLogs = 0; updateLogBadge(); }
   if (name === 'trading') { initTradingTab(); }
+  if (name === 'chat') { initChatTab().catch(() => {}); }
   if (name === 'hermes' && hermesInstalled && !dashboardRunning && !dashboardStartInFlight) {
     startHermesDashboardUi();
   }

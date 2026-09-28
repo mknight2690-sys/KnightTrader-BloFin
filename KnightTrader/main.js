@@ -1670,6 +1670,152 @@ function fetchDashboardSessionToken(forceRefresh = false) {
   });
 }
 
+let activeHermesChatRequest = null;
+
+function hermesSessionsPath(suffix = '') {
+  const path = `/api/sessions${suffix}`;
+  return `${path}${path.includes('?') ? '&' : '?'}profile=default`;
+}
+
+async function ensureHermesChatReady() {
+  const installStatus = checkHermesInstalled();
+  if (!installStatus.installed) {
+    return { ok: false, error: 'Hermes is not installed yet. Open the Hermes tab and complete Step 1.' };
+  }
+  const dash = await getDashboardStatus();
+  if (!dash.running) {
+    const started = await startHermesDashboard();
+    if (!started?.ok) {
+      return { ok: false, error: started?.msg || 'Could not start the Hermes dashboard.' };
+    }
+  } else if (!dash.gatewayRunning) {
+    const ready = await ensureDashboardAndGateway();
+    if (!ready?.ok) {
+      return { ok: false, error: ready?.msg || 'Hermes gateway is not running.' };
+    }
+  }
+  return { ok: true, url: getDashboardBaseUrl() };
+}
+
+async function hermesChatCreateSession(title = 'KnightTrader Chat') {
+  const ready = await ensureHermesChatReady();
+  if (!ready.ok) return ready;
+  const token = await fetchDashboardSessionToken();
+  const res = await hermesApiRequest(
+    'POST',
+    hermesSessionsPath(),
+    { title: String(title || 'KnightTrader Chat').slice(0, 120), source: 'knighttrader' },
+    token
+  );
+  const sessionId = res.body?.id || res.body?.session_id || res.body?.sessionId;
+  if (!sessionId) {
+    return { ok: false, error: 'Hermes did not return a chat session id.' };
+  }
+  return { ok: true, sessionId, url: ready.url };
+}
+
+async function hermesChatGetMessages(sessionId) {
+  const ready = await ensureHermesChatReady();
+  if (!ready.ok) return ready;
+  const token = await fetchDashboardSessionToken();
+  const res = await hermesApiRequest(
+    'GET',
+    hermesSessionsPath(`/${encodeURIComponent(sessionId)}/messages`),
+    null,
+    token
+  );
+  const raw = res.body?.messages || res.body?.items || res.body;
+  const messages = Array.isArray(raw) ? raw : [];
+  return { ok: true, messages, sessionId };
+}
+
+function parseHermesSseBlock(block, onEvent) {
+  let eventName = 'message';
+  for (const line of String(block || '').split('\n')) {
+    if (line.startsWith(':')) continue;
+    if (line.startsWith('event:')) {
+      eventName = line.slice(6).trim();
+      continue;
+    }
+    if (!line.startsWith('data:')) continue;
+    const payloadRaw = line.slice(5).trim();
+    if (!payloadRaw || payloadRaw === '[DONE]') continue;
+    try {
+      const payload = JSON.parse(payloadRaw);
+      onEvent(eventName, payload);
+    } catch (_) {}
+  }
+}
+
+function hermesChatStream(sessionId, input, webContents, requestId) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      if (activeHermesChatRequest) {
+        try { activeHermesChatRequest.destroy(); } catch (_) {}
+        activeHermesChatRequest = null;
+      }
+      const token = await fetchDashboardSessionToken();
+      const port = activeDashboardPort || DASHBOARD_PORT;
+      const payload = JSON.stringify({ input: String(input || '').trim() });
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port,
+        path: hermesSessionsPath(`/${encodeURIComponent(sessionId)}/chat/stream`),
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          'X-Hermes-Session-Token': token,
+          Authorization: `Bearer ${token}`,
+          'Content-Length': Buffer.byteLength(payload),
+        },
+      }, (res) => {
+        if ((res.statusCode || 0) >= 400) {
+          let errBody = '';
+          res.on('data', (chunk) => { errBody += chunk; });
+          res.on('end', () => {
+            activeHermesChatRequest = null;
+            reject(new Error(errBody || `Hermes chat failed (${res.statusCode})`));
+          });
+          return;
+        }
+        let buffer = '';
+        res.on('data', (chunk) => {
+          buffer += chunk.toString('utf8');
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+          for (const block of parts) {
+            parseHermesSseBlock(block, (eventName, payload) => {
+              if (webContents && !webContents.isDestroyed()) {
+                webContents.send('hermes-chat-event', { requestId, eventName, payload });
+              }
+            });
+          }
+        });
+        res.on('end', () => {
+          if (buffer.trim()) parseHermesSseBlock(buffer, (eventName, payload) => {
+            if (webContents && !webContents.isDestroyed()) {
+              webContents.send('hermes-chat-event', { requestId, eventName, payload });
+            }
+          });
+          activeHermesChatRequest = null;
+          resolve({ ok: true });
+        });
+      });
+      req.on('error', (err) => {
+        activeHermesChatRequest = null;
+        reject(err);
+      });
+      activeHermesChatRequest = req;
+      req.write(payload);
+      req.end();
+    } catch (err) {
+      activeHermesChatRequest = null;
+      reject(err);
+    }
+  });
+}
+
 function hermesApiRequest(method, apiPath, body, token) {
   return new Promise((resolve, reject) => {
     const port = activeDashboardPort || DASHBOARD_PORT;
@@ -2833,6 +2979,27 @@ function registerIPC() {
   ipcMain.handle('start-dashboard',   () => startHermesDashboard());
   ipcMain.handle('stop-dashboard',    () => stopHermesDashboard());
   ipcMain.handle('get-dashboard-status', () => getDashboardStatus());
+  ipcMain.handle('hermes-chat-ensure', () => ensureHermesChatReady());
+  ipcMain.handle('hermes-chat-create-session', (_e, title) => hermesChatCreateSession(title));
+  ipcMain.handle('hermes-chat-get-messages', (_e, sessionId) => hermesChatGetMessages(sessionId));
+  ipcMain.handle('hermes-chat-send', async (event, { sessionId, text, requestId }) => {
+    if (!sessionId || !String(text || '').trim()) {
+      return { ok: false, error: 'Missing chat message' };
+    }
+    try {
+      await hermesChatStream(sessionId, text, event.sender, requestId || Date.now());
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err?.message || String(err) };
+    }
+  });
+  ipcMain.handle('hermes-chat-cancel', () => {
+    if (activeHermesChatRequest) {
+      try { activeHermesChatRequest.destroy(); } catch (_) {}
+      activeHermesChatRequest = null;
+    }
+    return { ok: true };
+  });
   ipcMain.handle('configure-cron',    () => configureCron());
   ipcMain.handle('get-cron-prompt',   () => buildCronPrompt());
   ipcMain.handle('get-hermes-home',   () => HERMES_HOME);

@@ -25,6 +25,14 @@ contextBridge.exposeInMainWorld('kt', {
   configureCron: () => ipcRenderer.invoke('configure-cron'),
   getCronPrompt: () => ipcRenderer.invoke('get-cron-prompt'),
 
+  // Hermes chat
+  hermesChatEnsure: () => ipcRenderer.invoke('hermes-chat-ensure'),
+  hermesChatCreateSession: (title) => ipcRenderer.invoke('hermes-chat-create-session', title),
+  hermesChatGetMessages: (sessionId) => ipcRenderer.invoke('hermes-chat-get-messages', sessionId),
+  hermesChatSend: (payload) => ipcRenderer.invoke('hermes-chat-send', payload),
+  hermesChatCancel: () => ipcRenderer.invoke('hermes-chat-cancel'),
+  onHermesChatEvent: (cb) => ipcRenderer.on('hermes-chat-event', (_e, data) => cb(data)),
+
   // Logs
   getLogs: () => ipcRenderer.invoke('get-logs'),
   clearLogs: () => ipcRenderer.invoke('clear-logs'),

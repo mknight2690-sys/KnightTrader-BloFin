@@ -69,6 +69,10 @@
           <span>Hermes</span>
           <span id="hermes-nav-badge" class="badge hidden">!</span>
         </li>
+        <li class="nav-item" data-tab="chat">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span>Chat</span>
+        </li>
         <li class="nav-item" data-tab="trading">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
           <span>Trading</span>
@@ -1015,6 +1019,36 @@
 
       </section>
 
+      <!-- ── CHAT TAB ─────────────────────────────────────── -->
+      <section id="tab-chat" class="tab-panel">
+        <div class="panel-header">
+          <h1>Agent Chat</h1>
+          <p class="panel-sub">Talk to your Hermes agent — trading questions, setup help, research, or anything else.</p>
+        </div>
+        <div class="chat-shell">
+          <div class="chat-toolbar">
+            <div class="chat-status-wrap">
+              <span class="live-dot" id="chat-live-dot"></span>
+              <span id="chat-status">Connecting to Hermes…</span>
+            </div>
+            <div class="chat-toolbar-actions">
+              <button type="button" id="btn-chat-new" class="btn-ghost-sm">New chat</button>
+              <button type="button" id="btn-chat-open-hermes" class="btn-ghost-sm">Open in Hermes ↗</button>
+            </div>
+          </div>
+          <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
+          <div id="chat-empty" class="chat-empty">
+            <div class="chat-empty-title">Your Hermes agent is ready</div>
+            <div class="chat-empty-sub">Ask about open positions, cron setup, Blofin API keys, market ideas, or general questions.</div>
+          </div>
+          <div id="chat-tool-banner" class="chat-tool-banner hidden"></div>
+          <div class="chat-composer">
+            <textarea id="chat-input" rows="2" placeholder="Message your Hermes agent… (Enter to send, Shift+Enter for newline)"></textarea>
+            <button type="button" id="btn-chat-send" class="btn-primary">Send</button>
+          </div>
+        </div>
+      </section>
+
       <!-- ── TRADING TAB ───────────────────────────────────── -->
       <section id="tab-trading" class="tab-panel">
         <div id="trading-section-header" class="panel-header trading-header">
@@ -1129,6 +1163,7 @@
     </main>
 
   <script src="trading-system.js"></script>
+  <script src="chat.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
