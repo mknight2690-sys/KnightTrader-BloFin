@@ -160,6 +160,7 @@ function broadcastUpdate(channel, payload) {
 // then auto-restart after a short grace period. Manual buttons still work.
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = false;
+autoUpdater.disableDifferentialDownload = true;
 const UPDATE_CHECK_INTERVAL_MS = 60 * 1000;
 const AUTO_INSTALL_DELAY_MS = 15000;
 let updateDownloadedInfo = null;
@@ -227,6 +228,9 @@ async function fallbackDirectDownload(version) {
   const destDir = path.join(app.getPath('userData'), 'pending-update');
   fs.mkdirSync(destDir, { recursive: true });
   const dest = path.join(destDir, fileName);
+  if (fs.existsSync(dest)) {
+    try { fs.unlinkSync(dest); } catch (_) {}
+  }
   appendLog(`⬇ Direct download from GitHub: ${fileName}`, 'info');
   await downloadFileWithProgress(url, dest, (percent) => {
     broadcastUpdate('update-download-progress', { percent: Math.round(percent) });
@@ -242,83 +246,42 @@ async function fallbackDirectDownload(version) {
   return { ok: true, version: ver, fallback: true };
 }
 
-function psSingleQuoted(value) {
-  return `'${String(value).replace(/'/g, "''")}'`;
-}
-
-// Backup relaunch. The assisted NSIS installer is supposed to start the app
-// itself (--force-run), but that path uses ExecShellAsUser, which silently
-// no-ops when electron-updater spawned the installer. A child process we
-// spawn directly also dies with the app: Electron's Windows job object kills
-// it on quit, and launching the exe WHILE the installer is still replacing
-// files starts a process that taskkill/file-replace then destroys.
-//
-// This sentinel is started with `cmd /c start` so it breaks out of that job,
-// then waits until the Setup exe has exited before launching, and retries if
-// the new process dies immediately (single-instance collision / file lock).
-function getInstallerProcessPrefix() {
-  const fromPath = downloadedInstallerPath
-    ? path.basename(downloadedInstallerPath, '.exe')
-    : '';
-  if (fromPath) return fromPath.replace(/-\d+\.\d+\.\d+$/i, '');
-  return 'KnightTrader-Blofin-Setup';
-}
-
-function psEscape(value) {
-  return String(value).replace(/'/g, "''");
-}
-
-function getInstallDir() {
-  return path.dirname(process.execPath);
-}
-
-function ensureRelaunchScripts() {
-  const installDir = getInstallDir();
-  const exeName = getAppExecutableFileName();
-  const startBat = path.join(installDir, 'START.bat');
-  const loopBat = path.join(installDir, 'relaunch-loop.bat');
-  const startContent = `@echo off\r\nREM KnightTrader BloFin — launch installed app\r\ncd /d "%~dp0"\r\nstart "" "%~dp0${exeName}" --updated\r\nexit /b 0\r\n`;
-  try {
-    if (!fs.existsSync(startBat)) fs.writeFileSync(startBat, startContent, 'utf8');
-  } catch (_) {}
-  const bundledLoop = path.join(__dirname, 'relaunch-loop.bat');
-  try {
-    if (fs.existsSync(bundledLoop) && !fs.existsSync(loopBat)) {
-      fs.copyFileSync(bundledLoop, loopBat);
-    }
-  } catch (_) {}
-  return { installDir, startBat, loopBat };
-}
-
-function spawnRelaunchSentinel() {
-  try {
-    if (process.platform !== 'win32') return;
-    const { installDir, loopBat } = ensureRelaunchScripts();
-    const logPath = path.join(os.tmpdir(), 'knighttrader-relaunch.log');
-    try {
-      fs.unlinkSync(path.join(app.getPath('userData'), 'kt-relaunch-ok.flag'));
-    } catch (_) {}
-    let loopPath = loopBat;
-    if (!fs.existsSync(loopPath)) {
-      loopPath = path.join(os.tmpdir(), 'knighttrader-relaunch-loop.bat');
-      const bundledLoop = path.join(__dirname, 'relaunch-loop.bat');
-      if (fs.existsSync(bundledLoop)) fs.copyFileSync(bundledLoop, loopPath);
-    }
-    if (!fs.existsSync(loopPath)) {
-      appendLog('⚠ Relaunch loop script missing — cannot arm retry start', 'warn');
-      return;
-    }
-    const oldPid = Number(process.pid) || 0;
-    // `start` ShellExecutes outside Electron's job object so the loop survives quit.
-    const child = spawn('cmd.exe', [
-      '/d', '/c',
-      `start "" /MIN "${loopPath}" "${installDir}" ${oldPid}`,
-    ], { detached: true, stdio: 'ignore', windowsHide: true });
-    child.unref();
-    appendLog(`🔁 Relaunch loop armed (START.bat retry) — log: ${logPath}`, 'info');
-  } catch (e) {
-    appendLog(`⚠ Relaunch loop failed: ${e?.message || e}`, 'warn');
+function clearPendingUpdateMarkers() {
+  const userData = app.getPath('userData');
+  for (const name of ['kt-pending-version.txt', 'kt-installing.lock']) {
+    try { fs.unlinkSync(path.join(userData, name)); } catch (_) {}
   }
+}
+
+function reportStuckUpdateIfNeeded() {
+  if (!app.isPackaged) return;
+  try {
+    const userData = app.getPath('userData');
+    const pendingPath = path.join(userData, 'kt-pending-version.txt');
+    if (!fs.existsSync(pendingPath)) return;
+    const pending = normalizeVersion(fs.readFileSync(pendingPath, 'utf8'));
+    const current = app.getVersion();
+    if (pending && compareVersions(current, pending) < 0) {
+      appendLog(
+        `⚠ Update to v${pending} did not apply (still on v${current}). Clearing cache and retrying full installer…`,
+        'warn'
+      );
+      updateDownloadedInfo = null;
+      downloadedInstallerPath = null;
+      updateDownloadUsedFallback = false;
+      try {
+        const pendingDir = path.join(userData, 'pending-update');
+        if (fs.existsSync(pendingDir)) {
+          for (const f of fs.readdirSync(pendingDir)) {
+            try { fs.unlinkSync(path.join(pendingDir, f)); } catch (_) {}
+          }
+        }
+      } catch (_) {}
+      runAutoUpdatePipeline().catch(() => {});
+    } else if (pending && compareVersions(current, pending) >= 0) {
+      clearPendingUpdateMarkers();
+    }
+  } catch (_) {}
 }
 
 function getAppExecutableFileName() {
@@ -362,45 +325,38 @@ async function beginSilentUpdateInstall() {
   if (updateInstallInProgress) return;
   updateInstallInProgress = true;
   isQuittingForUpdate = true;
-  appendLog('🔄 Shutting down for update (tray + Hermes + desk)…', 'info');
+  const targetVer = normalizeVersion(updateDownloadedInfo?.version || pendingRemoteVersion || '');
+  appendLog(`🔄 Shutting down to install v${targetVer || 'update'}…`, 'info');
+  const userData = app.getPath('userData');
   try {
     fs.writeFileSync(
-      path.join(app.getPath('userData'), 'kt-installing.lock'),
-      String(Date.now()),
+      path.join(userData, 'kt-installing.lock'),
+      JSON.stringify({ at: Date.now(), target: targetVer }),
       'utf8'
     );
   } catch (_) {}
+  if (targetVer) {
+    try { fs.writeFileSync(path.join(userData, 'kt-pending-version.txt'), targetVer, 'utf8'); } catch (_) {}
+  }
 
   await shutdownAllServicesForInstall();
 
-  // NSIS customInstall relaunches on silent updates; sentinel is backup if that fails.
-  spawnRelaunchSentinel();
+  // Relaunch ONLY after NSIS finishes (customInstall → relaunch-loop.bat).
+  // Spawning START.bat before the installer runs relaunches the OLD exe and
+  // blocks file replacement — the root cause of "updates restart but version unchanged".
   try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch {}
   try { app.releaseSingleInstanceLock(); } catch (_) {}
 
-  if (updateDownloadUsedFallback && downloadedInstallerPath) {
-    spawn(downloadedInstallerPath, ['/S'], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-    }).unref();
-    setTimeout(() => { try { app.exit(0); } catch (_) {} }, 3000).unref?.();
+  const installer = downloadedInstallerPath || updateDownloadedInfo?.downloadedFile;
+  if (process.platform === 'win32' && installer && fs.existsSync(installer)) {
+    appendLog(`🔄 Running silent installer: ${path.basename(installer)}`, 'info');
+    spawn(installer, ['/S'], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    setTimeout(() => { try { app.exit(0); } catch (_) {} }, 1500).unref?.();
     return;
   }
 
-  // Do NOT destroy BrowserWindows before quitAndInstall(). Destroying the
-  // last window fires window-all-closed → app.quit() synchronously, which
-  // can exit the process before quitAndInstall() spawns the NSIS installer.
   autoUpdater.quitAndInstall(true, true);
-
-  setTimeout(() => {
-    try {
-      for (const w of BrowserWindow.getAllWindows()) {
-        if (!w.isDestroyed()) w.destroy();
-      }
-      app.exit(0);
-    } catch (_) {}
-  }, 6000).unref?.();
+  setTimeout(() => { try { app.exit(0); } catch (_) {} }, 8000).unref?.();
 }
 
 async function waitForDownloadedUpdate(timeoutMs = 180000) {
@@ -515,12 +471,21 @@ async function downloadUpdateFromMain() {
   }
 
   pendingRemoteVersion = remote;
-  configureGenericUpdateFeed(remote);
   updateDownloadInProgress = true;
   updateDownloadUsedFallback = false;
   broadcastUpdate('update-download-started', { version: remote });
   appendLog(`⬇ Downloading update ${remote}…`, 'info');
 
+  if (process.platform === 'win32') {
+    try {
+      return await fallbackDirectDownload(remote);
+    } catch (directErr) {
+      appendLog(`⚠ Direct installer download failed: ${directErr?.message || directErr}`, 'warn');
+      updateDownloadInProgress = false;
+    }
+  }
+
+  configureGenericUpdateFeed(remote);
   try {
     await autoUpdater.checkForUpdates();
     updateDownloadedInfo = null;
@@ -3728,9 +3693,7 @@ function forceKillExistingInstance() {
     } catch (_) {}
   }
   if (IS_POST_UPDATE_LAUNCH) {
-    try {
-      fs.unlinkSync(path.join(app.getPath('userData'), 'kt-installing.lock'));
-    } catch (_) {}
+    clearPendingUpdateMarkers();
   }
   try { fs.writeFileSync(PID_FILE, String(process.pid)); } catch (_) {}
 }
@@ -3935,6 +3898,9 @@ app.whenReady().then(async () => {
   } catch (_) {}
   if (IS_POST_UPDATE_LAUNCH) {
     appendLog(`✅ Updated to v${app.getVersion()} — app relaunched successfully.`, 'success');
+    clearPendingUpdateMarkers();
+  } else {
+    reportStuckUpdateIfNeeded();
   }
   appendLog(`🚀 KnightTrader Blofin started. Hermes sandbox: ${HERMES_HOME}`, 'success');
   syncHermesCredentials(null).catch((e) => {

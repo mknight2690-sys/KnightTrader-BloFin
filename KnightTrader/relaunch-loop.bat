@@ -38,7 +38,23 @@ if not "%OLD_PID%"=="" if not "%OLD_PID%"=="0" (
 )
 
 :wait_installer
->>"%LOG%" echo waiting for installer cooldown
+>>"%LOG%" echo waiting for NSIS installer to finish
+set /a _i=0
+:wait_setup_loop
+set /a _i+=1
+if !_i! GTR 180 goto post_install_cooldown
+tasklist 2>nul | find /I "KnightTrader-Blofin-Setup" >nul
+if !ERRORLEVEL!==0 (
+  timeout /t 2 /nobreak >nul
+  goto wait_setup_loop
+)
+tasklist 2>nul | find /I "KnightTrader Blofin Setup" >nul
+if !ERRORLEVEL!==0 (
+  timeout /t 2 /nobreak >nul
+  goto wait_setup_loop
+)
+:post_install_cooldown
+>>"%LOG%" echo installer idle — cooldown before START.bat
 timeout /t 5 /nobreak >nul
 
 set /a N=0
