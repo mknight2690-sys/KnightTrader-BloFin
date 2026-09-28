@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, protocol, webContents, session, Tray, nativeImage, Menu, Notification } = require('electron');
+const { app, BrowserWindow, BrowserView, ipcMain, shell, dialog, protocol, webContents, session, Tray, nativeImage, Menu, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -1051,6 +1051,8 @@ function getVpnOnboarding() {
 }
 
 let signupWindow = null;
+let signupView = null;
+const SIGNUP_CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 let pendingSignupContext = { type: 'proton', url: '', title: '' };
 const SIGNUP_URLS = {
   proton: 'https://account.proton.me/signup?product=mail&plan=free',
@@ -1144,6 +1146,62 @@ const SIGNUP_ONBOARDING_STEP = {
   nousApiKeys: 'nousApiCreate',
 };
 
+function layoutSignupView() {
+  if (!signupWindow || signupWindow.isDestroyed() || !signupView) return;
+  const [width, height] = signupWindow.getContentSize();
+  const top = 64;
+  signupView.setBounds({
+    x: 0,
+    y: top,
+    width: Math.max(width, 1),
+    height: Math.max(height - top, 1),
+  });
+}
+
+function loadSignupPage(url) {
+  const ses = session.fromPartition('persist:kt-signup');
+  try { ses.setUserAgent(SIGNUP_CHROME_UA); } catch (_) {}
+  if (!signupWindow || signupWindow.isDestroyed()) return;
+  if (!signupView || signupView.webContents.isDestroyed()) {
+    signupView = new BrowserView({
+      webPreferences: {
+        partition: 'persist:kt-signup',
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+      },
+    });
+    signupView.webContents.setUserAgent(SIGNUP_CHROME_UA);
+    signupView.webContents.setWindowOpenHandler(({ url: popupUrl }) => {
+      const popup = new BrowserWindow({
+        width: 520,
+        height: 760,
+        title: 'Proton',
+        autoHideMenuBar: true,
+        backgroundColor: '#ffffff',
+        webPreferences: {
+          partition: 'persist:kt-signup',
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: false,
+        },
+      });
+      popup.webContents.setUserAgent(SIGNUP_CHROME_UA);
+      popup.loadURL(popupUrl);
+      return { action: 'deny' };
+    });
+    signupView.webContents.on('did-fail-load', (_event, code, desc, failedUrl) => {
+      if (code === -3) return;
+      appendLog(`⚠ Signup page failed to load (${code} ${desc}): ${failedUrl}`, 'warn');
+    });
+  }
+  signupWindow.setBrowserView(signupView);
+  layoutSignupView();
+  signupView.webContents.loadURL(url).catch((err) => {
+    appendLog(`⚠ Could not open signup page: ${err?.message || err}`, 'warn');
+  });
+}
+
 function openSignupWindow(type) {
   if (type === 'protonDownloads') {
     const cfgDir = vpn.VPN_CONFIG_DIR;
@@ -1164,32 +1222,37 @@ function openSignupWindow(type) {
   if (signupWindow && !signupWindow.isDestroyed()) {
     signupWindow.setTitle(title);
     signupWindow.webContents.send('signup-shell-config', pendingSignupContext);
+    loadSignupPage(url);
     signupWindow.show();
     signupWindow.focus();
     return;
   }
   signupWindow = new BrowserWindow({
-    parent: mainWindow || undefined,
-    width: 1020,
-    height: 820,
+    width: 1100,
+    height: 860,
     title,
-    backgroundColor: '#0b0f14',
+    backgroundColor: '#ffffff',
     autoHideMenuBar: true,
+    show: true,
     webPreferences: {
       preload: path.join(__dirname, 'signup-preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      webviewTag: true,
     },
   });
   signupWindow.loadFile(shellPath);
   signupWindow.webContents.on('did-finish-load', () => {
     if (!signupWindow?.isDestroyed()) {
       signupWindow.webContents.send('signup-shell-config', pendingSignupContext);
+      loadSignupPage(pendingSignupContext.url);
     }
   });
-  signupWindow.on('closed', () => { signupWindow = null; });
+  signupWindow.on('resize', layoutSignupView);
+  signupWindow.on('closed', () => {
+    signupView = null;
+    signupWindow = null;
+  });
 }
 
 function notifySignupStepDone(type) {

@@ -6,7 +6,7 @@
   <title>Sign up</title>
   <style>
     * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; background: #0b0f14; color: #e8edf5; font-family: Inter, Segoe UI, sans-serif; }
+    html, body { margin: 0; height: 64px; overflow: hidden; background: #0b0f14; color: #e8edf5; font-family: Inter, Segoe UI, sans-serif; }
     body { display: flex; flex-direction: column; }
     .toolbar {
       display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -20,7 +20,7 @@
       background: linear-gradient(135deg, #f5c542, #e8a020); color: #0b0d10;
     }
     .btn-done:hover { filter: brightness(1.05); }
-    webview { flex: 1; width: 100%; border: none; background: #fff; }
+    .page-note { padding: 8px 14px; font-size: 12px; color: #94a3b8; }
   </style>
 </head>
 <body>
@@ -31,19 +31,16 @@
     </div>
     <button id="btn-done" type="button" class="btn-done">Done — continue</button>
   </div>
-  <webview id="wv" partition="persist:kt-signup" allowpopups></webview>
   <script>
     const titleEl = document.getElementById('title');
     const hintEl = document.getElementById('hint');
-    const wv = document.getElementById('wv');
     let signupType = 'proton';
 
     function applyConfig(cfg) {
       if (!cfg) return;
       signupType = cfg.type || signupType;
       if (cfg.title) titleEl.textContent = cfg.title;
-      if (cfg.hint) hintEl.textContent = cfg.hint;
-      if (cfg.url && wv.getURL() !== cfg.url) wv.src = cfg.url;
+      if (cfg.hint) hintEl.textContent = cfg.hint || cfg.error || '';
     }
 
     window.signupShell.getParams().then(applyConfig).catch(() => {});
