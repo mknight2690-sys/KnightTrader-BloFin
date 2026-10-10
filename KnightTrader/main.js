@@ -417,18 +417,46 @@ function spawnUpdateRunner(installerPath) {
       '',
     ].join('\r\n');
     fs.writeFileSync(launchBat, launchBody, 'utf8');
-    // Start-Process detaches completely — survives Electron app.exit().
-    const ps = [
-      `Add-Content -LiteralPath ${JSON.stringify(logPath)} -Value ('ps-start ' + (Get-Date -Format o))`,
-      `Start-Process -FilePath ${JSON.stringify(launchBat)} -WorkingDirectory ${JSON.stringify(os.tmpdir())} -WindowStyle Hidden`,
-    ].join('; ');
-    execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], {
-      timeout: 20000,
-      windowsHide: true,
-      stdio: 'ignore',
-    });
+    // Detach with WScript (most reliable under Electron) + PowerShell backup.
+    // `cmd start` under windowsHide often never runs (log stuck at "armed").
+    const vbsPath = path.join(os.tmpdir(), 'knighttrader-run-update.vbs');
+    const vbsBody = [
+      'On Error Resume Next',
+      `Set sh = CreateObject("WScript.Shell")`,
+      `sh.Run "cmd /c ""${launchBat.replace(/"/g, '""')}""", 0, False`,
+      '',
+    ].join('\r\n');
+    fs.writeFileSync(vbsPath, vbsBody, 'utf8');
+    let launched = false;
+    try {
+      execFileSync('wscript.exe', ['//B', '//Nologo', vbsPath], {
+        timeout: 15000,
+        windowsHide: true,
+        stdio: 'ignore',
+      });
+      launched = true;
+      try { fs.appendFileSync(logPath, `wscript-ok ${new Date().toISOString()}\n`); } catch (_) {}
+    } catch (e1) {
+      try { fs.appendFileSync(logPath, `wscript-fail ${e1?.message || e1}\n`); } catch (_) {}
+    }
+    if (!launched) {
+      try {
+        const ps = `Start-Process -FilePath ${JSON.stringify(launchBat)} -WorkingDirectory ${JSON.stringify(os.tmpdir())} -WindowStyle Hidden`;
+        execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], {
+          timeout: 20000,
+          windowsHide: true,
+          stdio: 'ignore',
+        });
+        launched = true;
+        try { fs.appendFileSync(logPath, `ps-ok ${new Date().toISOString()}\n`); } catch (_) {}
+      } catch (e2) {
+        try { fs.appendFileSync(logPath, `ps-fail ${e2?.message || e2}\n`); } catch (_) {}
+        throw e2;
+      }
+    }
     appendLog(`🔁 Update runner armed (wait install → relaunch) — log: ${logPath}`, 'info');
   } catch (e) {
+    try { fs.appendFileSync(path.join(os.tmpdir(), 'knighttrader-update.log'), `spawn-fail ${e?.message || e}\n`); } catch (_) {}
     appendLog(`⚠ Update runner failed: ${e?.message || e}`, 'warn');
   }
 }
@@ -2865,21 +2893,46 @@ async function stopHermesDashboard() {
 }
 
 // ── Cron configuration ─────────────────────────────────────────────────────
-// The cron prompt is sourced from an external file so it can be edited
-// without touching the app source. Falls back to the embedded prompt if
-// the file is missing or unreadable.
-const CRON_PROMPT_FILE = 'C:\\Users\\mknig\\OneDrive\\Documents\\Hermes Blofin Cron Prompt.txt';
+// Prompt resolution order: bundled cron-prompt.txt → OneDrive edit file → built-in.
+const CRON_PROMPT_ONEDRIVE = 'C:\\Users\\mknig\\OneDrive\\Documents\\Hermes Blofin Cron Prompt.txt';
+
+function cronPromptCandidatePaths() {
+  const list = [];
+  try {
+    if (process.resourcesPath) list.push(path.join(process.resourcesPath, 'cron-prompt.txt'));
+  } catch (_) {}
+  list.push(path.join(__dirname, 'cron-prompt.txt'));
+  list.push(CRON_PROMPT_ONEDRIVE);
+  return list;
+}
+
+function interpolateCronPrompt(text) {
+  const compPath = getCompendiumPath();
+  const hermesWin = HERMES_HOME;
+  const hermesPosix = String(HERMES_HOME || '')
+    .replace(/^([A-Za-z]):\\/, (_, d) => `/mnt/${d.toLowerCase()}/`)
+    .replace(/\\/g, '/');
+  return String(text || '')
+    .replace(/\{\{COMPENDIUM\}\}/g, compPath)
+    .replace(/\{\{HERMES_HOME\}\}/g, hermesPosix)
+    .replace(/\{\{HERMES_HOME_WIN\}\}/g, hermesWin);
+}
 
 function readCronPromptFile() {
-  try {
-    if (!fs.existsSync(CRON_PROMPT_FILE)) return null;
-    const raw = fs.readFileSync(CRON_PROMPT_FILE, 'utf8');
-    const text = String(raw || '').trim();
-    return text ? text : null;
-  } catch (e) {
-    appendLog(`⚠ Could not read cron prompt file: ${e.message} — using built-in prompt`, 'warn');
-    return null;
+  for (const file of cronPromptCandidatePaths()) {
+    try {
+      if (!file || !fs.existsSync(file)) continue;
+      const raw = fs.readFileSync(file, 'utf8');
+      const text = String(raw || '').trim();
+      if (text) {
+        appendLog(`ℹ Cron prompt loaded from ${file}`, 'info');
+        return interpolateCronPrompt(text);
+      }
+    } catch (e) {
+      appendLog(`⚠ Could not read cron prompt ${file}: ${e.message}`, 'warn');
+    }
   }
+  return null;
 }
 
 function buildCronPrompt() {
@@ -2891,7 +2944,10 @@ function buildCronPrompt() {
   const targetUrl = isDemo ? BLOFIN_DEMO_URL : BLOFIN_LIVE_URL;
   const targetMode = isDemo ? 'DEMO / SIMULATED (Testing with Virtual Funds)' : 'LIVE TRADING';
 
-  return `=== BLOFIN PERPETUALS — 10-MIN AUTONOMOUS TRADING CRON (copy-paste ready) ===
+  return `MENTAL TRADING
+mentally trade: new strategies always to stay with best strategy live, if in no challenge/zero live balance, while trading live, to test new strategies
+
+=== BLOFIN PERPETUALS — 5-MIN AUTONOMOUS TRADING CRON (copy-paste ready) ===
 
 UNIVERSE + TRANSPORT (the #1 thing that breaks, already solved)
 BloFin has 400+ perpetual futures (USDT-SWAP). The universe lives at:
@@ -3018,12 +3074,13 @@ Take mental trades on the perps you'd trade/want to follow and follow them to co
 MISSION / RULES
 YOU are the trading automation: you decide, you place, you attach TP/SL, you monitor. Zero external order-bots, zero auto-scanners that submit orders, zero "run-agent" wrappers. Scan EVERY universe asset with your own judgment. Prefer clarity over activity; compound wins; do not force rotations on thin capital. If something breaks: troubleshoot (WAF→Camoufox, signing→epoch-ms+nonce+base64(hex), brokerId, granularity resample), verify JSON, resume. Do not stop at "blocked." Never be in a rush to lose money.
 
-PROCEED NOW (10-MIN EXECUTION ORDER)
+PROCEED NOW (5-MIN EXECUTION ORDER)
+MENTAL TRADING — mentally trade new strategies always to stay with best strategy live; if no challenge/zero live balance, keep mental-trading while live-trading to test new strategies.
 1) Write/import the client above. Prove pipe: public tickers (code0, 490 syms) → signed balance (real equity) → positions/tpsl (code0). If 403 HTML → you used curl/curl_cffi; switch the client to Camoufox.
 2) Read lessons file; apply prior rules.
 3) Scan: tickers → liquid top ~40 by 24h vol → fetch+candles (paginated 1m, resample) → apply gates.
-4) If a gate FULLY fires with R:R>=2 and volume confirmation: set_leverage → place_order (isolated, attached TP/SL), then verify it is live via tpsl-pending. Size <=1.5 USDT margin. Else HOLD.
-5) Mental-trade log for the universe (oversold/overbought/notable names): record planned entries + triggers.
+4) If a gate FULLY fires with R:R>=2.5 and volume confirmation: set_leverage → place_order (isolated, attached TP/SL), then verify it is live via tpsl-pending. Size <=1.5 USDT margin. Else HOLD.
+5) Mental-trade log for the universe — invent/test NEW strategies every tick (especially on zero balance).
 6) Manage/monitor any open positions (attached TP/SL does the exiting; only tighten SL to breakeven or cut if structure breaks).
 7) Append this tick's decision + mental-trade log + any new rule to the lessons file. Keep the equity curve vertical.`;
 }

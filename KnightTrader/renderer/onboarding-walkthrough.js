@@ -127,7 +127,7 @@
     hermesInstall: { title: 'Install Hermes', text: 'Downloads Hermes sandboxed inside this app.', primary: 'Install Hermes now', secondary: 'Skip — installed', form: false, action: 'hermesInstall' },
     compendium: { title: 'Save & compendium', text: 'Writes the file Hermes reads for your keys.', primary: 'Save & write compendium', secondary: 'Skip', form: false, action: 'compendium' },
     hermesStart: { title: 'Start Hermes', text: 'Starts dashboard + gateway on port 9119.', primary: 'Start dashboard + gateway', secondary: 'Skip — running', form: false, action: 'hermesStart' },
-    cron: { title: 'Configure cron', text: 'Auto-creates the 10-minute BloFin trading cron.', primary: 'Auto-configure cron', secondary: 'Skip', form: false, action: 'cron' },
+    cron: { title: 'Configure cron', text: 'Auto-creates the 5-minute BloFin cron with mental trading + live execution.', primary: 'Auto-configure cron', secondary: 'Skip', form: false, action: 'cron' },
   };
 
   function currentStepId() {

@@ -668,7 +668,7 @@
               <div class="step-num">20</div>
               <div class="step-body">
                 <div class="step-title">Auto-configure the trading cron</div>
-                <div class="step-desc">This tells Hermes to scan Blofin on a schedule (every 10 minutes) and place trades using market orders per your compendium rules.</div>
+                <div class="step-desc">This tells Hermes to scan Blofin every <strong>5 minutes</strong>, place live trades when gates fire, and <strong>mental-trade</strong> new strategies in parallel so the live book always tracks the best model — even on zero balance / no challenge.</div>
                 <ol class="howto-list">
                   <li>Confirm step 19 shows dashboard + gateway <strong>running</strong>.</li>
                   <li>In the app <strong>Hermes</strong> tab, click <strong>Auto-Configure Cron</strong>.</li>
@@ -697,7 +697,7 @@
                 <li>Confirm <strong>Account Equity</strong> on the desk matches roughly your USDT-M balance (not zero).</li>
                 <li>Confirm <strong>Trading dashboard</strong> monitor says <strong>Live</strong> or <strong>Live · SSE connected</strong>.</li>
                 <li>Confirm <strong>Last activity</strong> changes from <strong>Waiting for Hermes</strong> to something recent.</li>
-                <li>Scroll the desk to <strong>Recent Activity</strong> — look for a Hermes cron tick within the last 10–15 minutes.</li>
+                <li>Scroll the desk to <strong>Recent Activity</strong> — look for a Hermes cron tick within the last <strong>5–10 minutes</strong>.</li>
                 <li>If a trade was placed, scroll to <strong>Open Positions</strong> and confirm rows appear.</li>
                 <li>Open the app <strong>Logs</strong> tab — look for <strong>cron</strong>, <strong>gateway running</strong>, or successful Blofin test lines without repeated errors.</li>
                 <li>Open the Hermes dashboard in browser and confirm the cron/job shows as scheduled or recently executed.</li>
@@ -1035,7 +1035,7 @@
             <div class="step-num">4</div>
             <div class="step-body">
               <div class="step-title">Configure 10-Minute Cron</div>
-              <div class="step-desc">Auto-creates the <code>blofin-equity-vertical</code> cron in Hermes with the full trading prompt.</div>
+              <div class="step-desc">Auto-creates the <code>blofin-equity-vertical</code> cron (<strong>every 5 minutes</strong>) with the mental-trading + max-profitability prompt.</div>
               <div class="step-actions">
                 <button id="btn-configure-cron" class="btn-primary" disabled>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
