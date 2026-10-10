@@ -380,11 +380,18 @@ function spawnUpdateRunner(installerPath) {
     materializeRelaunchScripts(installDir);
     const flagPath = path.join(app.getPath('userData'), 'kt-relaunch-ok.flag');
     const logPath = path.join(os.tmpdir(), 'knighttrader-update.log');
-    let runnerBat = getUpdateRunnerBatPath();
+    // Always copy the bundled runner to TEMP so we never execute a stale
+    // update-install.bat left beside an old exe / wrong install tree.
     const bundled = path.join(__dirname, 'update-install.bat');
-    if (!fs.existsSync(runnerBat) && fs.existsSync(bundled)) {
-      runnerBat = path.join(os.tmpdir(), 'knighttrader-update-install.bat');
+    const besideExe = path.join(installDir, 'update-install.bat');
+    let runnerBat = path.join(os.tmpdir(), 'knighttrader-update-install.bat');
+    if (fs.existsSync(bundled)) {
       fs.copyFileSync(bundled, runnerBat);
+      try { fs.copyFileSync(bundled, besideExe); } catch (_) {}
+    } else if (fs.existsSync(besideExe)) {
+      fs.copyFileSync(besideExe, runnerBat);
+    } else if (fs.existsSync(getUpdateRunnerBatPath())) {
+      runnerBat = getUpdateRunnerBatPath();
     }
     if (!fs.existsSync(runnerBat)) {
       appendLog('⚠ update-install.bat missing — cannot run silent update', 'warn');
@@ -393,16 +400,48 @@ function spawnUpdateRunner(installerPath) {
     try { fs.unlinkSync(flagPath); } catch (_) {}
     try { fs.unlinkSync(path.join(os.tmpdir(), 'knighttrader-relaunch.lock')); } catch (_) {}
     try { fs.unlinkSync(path.join(os.tmpdir(), 'knighttrader-update.lock')); } catch (_) {}
+    try { fs.writeFileSync(logPath, `armed ${new Date().toISOString()} runner=${runnerBat}\n`, 'utf8'); } catch (_) {}
     const oldPid = Number(process.pid) || 0;
     const exePath = process.execPath;
-    const child = spawn('cmd.exe', [
-      '/d', '/c',
-      `start "" /MIN "${runnerBat}" "${installerPath}" "${installDir}" "${exePath}" ${oldPid} "${flagPath}"`,
-    ], { detached: true, stdio: 'ignore', windowsHide: true });
+    // Spawn the bat directly — nested `start /MIN` often never runs (no log).
+    const child = spawn(
+      'cmd.exe',
+      ['/d', '/c', 'call', runnerBat, installerPath, installDir, exePath, String(oldPid), flagPath],
+      { detached: true, stdio: 'ignore', windowsHide: true, cwd: os.tmpdir() },
+    );
     child.unref();
     appendLog(`🔁 Update runner armed (wait install → relaunch) — log: ${logPath}`, 'info');
   } catch (e) {
     appendLog(`⚠ Update runner failed: ${e?.message || e}`, 'warn');
+  }
+}
+
+function rewriteDesktopShortcutToInstalledExe() {
+  if (process.platform !== 'win32' || !app.isPackaged) return;
+  try {
+    const exePath = process.execPath;
+    const workDir = path.dirname(exePath);
+    const desktopLnk = path.join(os.homedir(), 'Desktop', 'KnightTrader Blofin.lnk');
+    // PowerShell COM rewrite — reliable on Windows without extra deps.
+    const ps = [
+      `$W=New-Object -ComObject WScript.Shell`,
+      `$p=${JSON.stringify(desktopLnk)}`,
+      `$s=$W.CreateShortcut($p)`,
+      `$s.TargetPath=${JSON.stringify(exePath)}`,
+      `$s.WorkingDirectory=${JSON.stringify(workDir)}`,
+      `$s.Arguments=''`,
+      `$s.Description='KnightTrader Blofin'`,
+      `$s.IconLocation=${JSON.stringify(exePath + ',0')}`,
+      `$s.Save()`,
+    ].join('; ');
+    execSync(`powershell -NoProfile -ExecutionPolicy Bypass -Command ${JSON.stringify(ps)}`, {
+      timeout: 15000,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    appendLog('🔗 Desktop shortcut pointed at installed app', 'info');
+  } catch (e) {
+    appendLog(`ℹ Desktop shortcut rewrite skipped: ${e?.message || e}`, 'info');
   }
 }
 
@@ -459,6 +498,8 @@ async function beginSilentUpdateInstall() {
     }
 
     await shutdownAllServicesForInstall();
+    // Kill other tray/hidden instances so NSIS can replace the exe.
+    killOtherAppInstances();
 
     try { if (appTray) { appTray.destroy(); appTray = null; trayReady = false; } } catch (_) {}
     try { app.releaseSingleInstanceLock(); } catch (_) {}
@@ -474,7 +515,8 @@ async function beginSilentUpdateInstall() {
       }
       appendLog(`🔄 Running silent installer → ${getInstallDir()}`, 'info');
       spawnUpdateRunner(runInstaller);
-      setTimeout(() => { try { app.exit(0); } catch (_) {} }, 1500).unref?.();
+      // Give the detached runner time to attach before we exit.
+      setTimeout(() => { try { app.exit(0); } catch (_) {} }, 2500).unref?.();
       return;
     }
 
@@ -4482,7 +4524,13 @@ app.whenReady().then(async () => {
   } else {
     reportStuckUpdateIfNeeded();
   }
-  appendLog(`🚀 KnightTrader Blofin started. Hermes sandbox: ${HERMES_HOME}`, 'success');
+  if (app.isPackaged) {
+    // Keep Desktop shortcut on the installed exe — not an old launch.bat / source tree.
+    setTimeout(() => { rewriteDesktopShortcutToInstalledExe(); }, 2500);
+  } else {
+    appendLog('⚠ Running unpackaged (dev). In-app updates will not apply. Use Start Menu → KnightTrader Blofin for the installed build.', 'warn');
+  }
+  appendLog(`🚀 KnightTrader Blofin v${app.getVersion()} started. Hermes sandbox: ${HERMES_HOME}`, 'success');
   syncHermesCredentials(null).catch((e) => {
     appendLog(`ℹ Hermes credential sync deferred: ${e.message}`, 'info');
   });

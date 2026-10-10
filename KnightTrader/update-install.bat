@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableDelayedExpansion
-REM Single-shot update: wait for app exit, run NSIS /S, wait for finish, relaunch.
+REM Single-shot update: wait for app exit, run NSIS /S into INSTDIR, verify, relaunch.
 set "INSTALLER=%~1"
 set "INSTDIR=%~2"
 set "EXE=%~3"
@@ -24,6 +24,15 @@ if not exist "%INSTALLER%" (
   exit /b 1
 )
 
+if "%INSTDIR%"=="" (
+  >>"%LOG%" echo ERROR instdir empty
+  del "%LOCK%" 2>nul
+  exit /b 1
+)
+
+REM Ensure INSTDIR ends with backslash for NSIS /D=
+if not "%INSTDIR:~-1%"=="\" set "INSTDIR=%INSTDIR%\"
+
 if not "%OLD_PID%"=="" if not "%OLD_PID%"=="0" (
   set /a _w=0
   :wait_pid
@@ -37,28 +46,41 @@ if not "%OLD_PID%"=="" if not "%OLD_PID%"=="0" (
 )
 
 :after_wait
->>"%LOG%" echo waiting for file locks to clear
+>>"%LOG%" echo killing leftover app / hermes processes
+taskkill /F /IM "KnightTrader Blofin.exe" /T >nul 2>&1
+taskkill /F /IM "hermes.exe" /T >nul 2>&1
 timeout /t 3 /nobreak >nul
 
->>"%LOG%" echo running installer /S /CURRENTUSER
-start /wait "" "%INSTALLER%" /S /CURRENTUSER
+>>"%LOG%" echo running installer /S /CURRENTUSER /D=%INSTDIR%
+REM /D= must be last. Path after /D= must not be quoted (NSIS rule).
+start /wait "" "%INSTALLER%" /S /CURRENTUSER /D=%INSTDIR%
 set "RC=!ERRORLEVEL!"
 >>"%LOG%" echo installer exit code !RC!
 
+if not "!RC!"=="0" (
+  >>"%LOG%" echo ERROR installer failed — NOT relaunching old build
+  del "%LOCK%" 2>nul
+  exit /b !RC!
+)
+
 timeout /t 2 /nobreak >nul
 
-if exist "%INSTDIR%START.bat" (
-  >>"%LOG%" echo relaunch via START.bat
-  del "%FLAG%" 2>nul
-  call "%INSTDIR%START.bat"
-) else if exist "%EXE%" (
-  >>"%LOG%" echo relaunch via exe
-  del "%FLAG%" 2>nul
-  start "" "%EXE%" --updated
-) else (
-  >>"%LOG%" echo ERROR exe not found at %EXE%
+if not exist "%EXE%" if exist "%INSTDIR%KnightTrader Blofin.exe" (
+  set "EXE=%INSTDIR%KnightTrader Blofin.exe"
+)
+
+if not exist "%EXE%" (
+  >>"%LOG%" echo ERROR exe missing after install: %EXE%
   del "%LOCK%" 2>nul
   exit /b 1
+)
+
+>>"%LOG%" echo install ok — relaunching %EXE%
+del "%FLAG%" 2>nul
+if exist "%INSTDIR%START.bat" (
+  call "%INSTDIR%START.bat"
+) else (
+  start "" "%EXE%" --updated
 )
 
 >>"%LOG%" echo relaunch spawned
