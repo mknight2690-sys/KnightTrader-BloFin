@@ -416,11 +416,11 @@
   el.btnWaitCreate?.addEventListener('click', () => createProtonAccount());
   el.btnWaitContinue?.addEventListener('click', () => continueAfterAccount());
   el.btnWaitTab?.addEventListener('click', () => {
-    confirmClick('Click received — opening the VPN tab. Server changes keep running.');
+    confirmClick('Click received — opening Credentials. Server changes keep running.');
     userHidWaitOverlay = true;
     hideWaitOverlay();
-    if (typeof window.switchTab === 'function') window.switchTab('vpn');
-    else document.querySelector('.nav-item[data-tab="vpn"]')?.click();
+    if (typeof window.switchTab === 'function') window.switchTab('credentials');
+    else document.querySelector('.nav-item[data-tab="credentials"]')?.click();
     refreshStatus(false);
   });
   el.btnDisconnect?.addEventListener('click', async () => {
@@ -435,7 +435,7 @@
     if (type !== 'proton' && type !== 'protonLogin') return;
     userHidWaitOverlay = true;
     hideWaitOverlay();
-    if (typeof window.switchTab === 'function') window.switchTab('vpn');
+    if (typeof window.switchTab === 'function') window.switchTab('credentials');
     const message = payload?.message || (type === 'proton'
       ? 'Create Proton account closed. Enter that email and password, then click Continue — connect.'
       : 'Sign-in closed. Enter that Proton email and password, then click Continue — connect.');

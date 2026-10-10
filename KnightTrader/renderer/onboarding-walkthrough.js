@@ -208,7 +208,6 @@
     }
     if (stepId === 'vpn') {
       appendSetupLog('Ensuring BloFin-allowed VPN route…');
-      try { document.querySelector('.nav-item[data-tab="vpn"]')?.click(); } catch (_) {}
       window.handleVpnUserNotify?.({
         step: 'user-notify',
         notifyUser: true,

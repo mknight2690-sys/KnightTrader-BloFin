@@ -727,8 +727,6 @@ function switchTab(name) {
   if (name === 'trading') { initTradingTab(); }
   if (name === 'chat') { initChatTab().catch(() => {}); }
   if (name === 'credentials') { window.initCredentialsTab?.(); }
-  if (name === 'vpn') { window.initVpnTab?.(); }
-  if (name !== 'vpn') { window.stopVpnTabPoll?.(); }
   if (name === 'hermes' && hermesInstalled && !dashboardRunning && !dashboardStartInFlight) {
     startHermesDashboardUi();
   }

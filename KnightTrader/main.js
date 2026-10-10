@@ -3310,7 +3310,7 @@ async function autoSelectWorkingFreeModel() {
       const changed = mdl !== current;
       storeData.nous = { ...(storeData.nous || {}), model: mdl };
       saveStore(storeData);
-      // Forward the new model to the cron job (preserves the user's prompt).
+      // Forward the new model to every cron job (preserves each job's prompt).
       try {
         await updateCronModelOnly(mdl);
       } catch (e) {
@@ -3327,9 +3327,9 @@ async function autoSelectWorkingFreeModel() {
   return { ok: false, reason: 'all-failed', model: current };
 }
 
-// Update ONLY the model field on the existing cron job, preserving the
-// user's prompt. If the job doesn't exist yet, do nothing — the next
-// "Configure cron" run will create it with the current model.
+// Update ONLY the model field on every existing cron job, preserving each
+// job's prompt (and name). If no jobs exist yet, do nothing — the next
+// "Configure cron" run will create blofin-equity-vertical with the current model.
 async function updateCronModelOnly(model) {
   const mdl = normalizeNousModel(model);
   if (!mdl) return { ok: false, msg: 'No model' };
@@ -3347,37 +3347,46 @@ async function updateCronModelOnly(model) {
   if (list.status !== 200 || !Array.isArray(list.body)) {
     return { ok: false, msg: `list failed (${list.status})` };
   }
-  const existing = list.body.find((job) => job.name === 'blofin-equity-vertical');
-  if (!existing?.id) {
+  const jobs = list.body.filter((job) => job?.id);
+  if (!jobs.length) {
     appendLog('ℹ Cron job not found yet — model will be used when cron is configured.', 'info');
     return { ok: false, msg: 'no-existing-job' };
   }
 
-  // Preserve the existing prompt; only swap model + provider/base_url.
-  const existingPrompt = existing.prompt || existing.spec?.prompt || null;
-  const updates = {
-    name: 'blofin-equity-vertical',
-    provider: 'custom',
-    base_url: NOUS_INFERENCE_BASE,
-    model: mdl,
-  };
-  if (existingPrompt) updates.prompt = existingPrompt;
+  let okCount = 0;
+  const failures = [];
+  for (const job of jobs) {
+    const existingPrompt = job.prompt || job.spec?.prompt || null;
+    const updates = {
+      provider: 'custom',
+      base_url: NOUS_INFERENCE_BASE,
+      model: mdl,
+    };
+    if (job.name) updates.name = job.name;
+    if (existingPrompt) updates.prompt = existingPrompt;
 
-  const updated = await hermesApiRequest(
-    'PUT',
-    `/api/cron/jobs/${encodeURIComponent(existing.id)}?profile=default`,
-    { updates },
-    token,
-  );
-  if (updated.status < 300) {
-    appendLog(`✅ Cron model updated to ${mdl} (prompt preserved)`, 'success');
-    return { ok: true, jobId: existing.id, model: mdl };
+    const updated = await hermesApiRequest(
+      'PUT',
+      `/api/cron/jobs/${encodeURIComponent(job.id)}?profile=default`,
+      { updates },
+      token,
+    );
+    if (updated.status < 300) {
+      okCount += 1;
+    } else {
+      const detail = typeof updated.body === 'object'
+        ? (updated.body.detail || JSON.stringify(updated.body))
+        : String(updated.body);
+      failures.push(`${job.name || job.id}: ${detail}`);
+      appendLog(`⚠ Cron model update failed for ${job.name || job.id} (${updated.status}): ${detail}`, 'warn');
+    }
   }
-  const detail = typeof updated.body === 'object'
-    ? (updated.body.detail || JSON.stringify(updated.body))
-    : String(updated.body);
-  appendLog(`⚠ Cron model update failed (${updated.status}): ${detail}`, 'warn');
-  return { ok: false, msg: detail };
+
+  if (okCount > 0) {
+    appendLog(`✅ Cron model ${mdl} applied to ${okCount}/${jobs.length} job(s) (prompts preserved)`, 'success');
+    return { ok: true, model: mdl, updated: okCount, total: jobs.length, failures };
+  }
+  return { ok: false, msg: failures.join('; ') || 'all-failed', total: jobs.length };
 }
 
 // ── Blofin API credential test ─────────────────────────────────────────────

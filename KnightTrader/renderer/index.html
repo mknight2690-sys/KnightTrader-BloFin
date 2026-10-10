@@ -64,11 +64,6 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           <span>Credentials</span>
         </li>
-        <li class="nav-item" data-tab="vpn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          <span>VPN</span>
-          <span id="vpn-nav-badge" class="badge hidden">!</span>
-        </li>
         <li class="nav-item" data-tab="setup">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
           <span>Setup</span>
@@ -135,16 +130,10 @@
       </div>
       <!-- ── End popup menu button ─────────────────────────────── -->
 
-      <!-- ── HOW-TO TAB ─────────────────────────────────────────── -->
       <section id="tab-howto" class="tab-panel active">
         <div class="panel-header">
           <h1>How-To</h1>
-          <p class="panel-sub">Most of this guide runs automatically — popup windows walk you through each step once.</p>
-        </div>
-        <div class="howto-automation-callout">
-          <div class="howto-automation-title">What KnightTrader automates for you</div>
-          <p>The popup walkthrough covers VPN setup, Proton and BloFin accounts, API keys, Coinbase on-ramp, USDT deposit, Hermes install, and cron configuration — work that normally takes <strong>hours</strong> of tab-hopping and trial-and-error. Most traders figure this out alone, mid-stream, with real money on the line. Here you get a guided path: a few one-time popups, click <strong>Done</strong> after each, and you are set up for automated trading instead of being dropped in the deep end.</p>
-          <p class="howto-automation-note">First launch takes a few minutes. You only do it once — returning visits auto-connect VPN and Hermes and take you straight to Trading.</p>
+          <p class="panel-sub">Do these steps in order. This guide is written for someone who has never done this before.</p>
         </div>
         <blockquote class="hero-quote">
           <p>“Take it slow, follow the How-To tab, and you’ll be fine. Every button clicked once in the first go around.</p>
@@ -236,14 +225,13 @@
                 <div class="step-title">Sign in to the app</div>
                 <div class="step-desc">Use the same email and password you used on the website.</div>
                 <ol class="howto-list">
-                  <li>When the app opens, a <strong>first-time setup wizard</strong> appears — follow it (popup windows + Done buttons). You can also use the <strong>Credentials</strong> tab later.</li>
-                  <li>You should land on the <strong>How-To</strong> tab behind the wizard — that is normal for first launch.</li>
+                  <li>When the app opens, you should land on the <strong>How-To</strong> tab — that is normal for first launch.</li>
                   <li>If you see a sign-in screen, click into the <strong>email</strong> field and type your membership email exactly.</li>
                   <li>Click the <strong>password</strong> field and type your membership password — use Show password if you need to verify typing.</li>
                   <li>Click <strong>Sign in</strong> once and wait a few seconds.</li>
                   <li>If you see an error, check <strong>Caps Lock</strong> and retype both fields carefully.</li>
                   <li>If it says membership is not active, open the membership site and confirm Stripe subscription status, or renew in the app <strong>Settings</strong> tab if available.</li>
-                  <li>After successful sign-in, explore the left tabs: <strong>How-To</strong>, <strong>Credentials</strong>, <strong>Setup</strong>, <strong>Hermes</strong>, <strong>Chat</strong>, <strong>Trading</strong>, <strong>Logs</strong>.</li>
+                  <li>After successful sign-in, explore the left tabs: <strong>How-To</strong>, <strong>Setup</strong>, <strong>Hermes</strong>, <strong>Trading</strong>, <strong>Logs</strong>.</li>
                 </ol>
                 <div class="step-desc">Do not guess passwords. If you forget it, use <strong>Forgot password?</strong> on the membership login page, not inside the app alone.</div>
               </div>
@@ -284,25 +272,31 @@
             <div class="step-card">
               <div class="step-num">5</div>
               <div class="step-body">
-                <div class="step-title">First-run wizard — ProtonVPN + BloFin (in the app)</div>
-                <div class="step-desc">On first launch, KnightTrader opens a <strong>one-time setup wizard</strong>. Each step opens an in-app popup — create email, verify email, sign up for BloFin — then click <strong>Done — continue</strong>.</div>
-                <div class="step-desc"><strong>Email + account popups (in order):</strong></div>
+                <div class="step-title">Install ProtonVPN and reach an allowed country</div>
+                <div class="step-desc">Use this only if Blofin is blocked in your country. Do not skip the wait times.</div>
+                <div class="step-desc"><strong>When you need this step:</strong> If <strong>blofin.com</strong> loads normally without a geo-block message, you can skip VPN entirely. If Blofin says your region is restricted, follow every sub-step below.</div>
+                <div class="step-desc"><strong>Exact routine:</strong></div>
                 <ol class="howto-list">
-                  <li>The app checks whether BloFin is allowed in your country.</li>
-                  <li><strong>Create @proton.me email</strong> popup — pick a username (that is your free email for BloFin + VPN).</li>
-                  <li><strong>Proton Mail</strong> popup — sign in, open Proton’s verification email, click the link.</li>
-                  <li>Save your @proton.me + password in the wizard (<strong>Credentials</strong> tab).</li>
-                  <li>If VPN is needed: <strong>Install &amp; connect VPN</strong> — pick a free server in <strong>Netherlands, Japan, Romania, or Poland</strong>.</li>
-                  <li><strong>BloFin signup</strong> popup — register using your @proton.me address.</li>
-                  <li><strong>Proton Mail</strong> popup again — open BloFin’s verification email and click the link.</li>
-                  <li>Save your BloFin account email in the wizard.</li>
-                  <li><strong>BloFin login</strong> popup → sign in.</li>
-                  <li><strong>API Management</strong> popup → create API key (Read + Compendium + Trade + Passphrase).</li>
-                  <li><strong>Paste API Keys</strong> popup — paste all three values once, click <strong>Done — save credentials</strong>.</li>
+                  <li>Go to <strong>protonvpn.com</strong> in Chrome or Edge.</li>
+                  <li>Click <strong>Get Proton VPN</strong> or <strong>Download</strong> for Windows or Mac.</li>
+                  <li>Run the installer and finish setup (default options are fine).</li>
+                  <li>Create a free Proton account with an email you can access.</li>
+                  <li>Verify your email if Proton sends a link.</li>
+                  <li>Open the ProtonVPN app and sign in.</li>
+                  <li>Click <strong>Quick Connect</strong> or <strong>Connect</strong> once to confirm VPN works.</li>
+                  <li>Note which country flag appears — if it is the <strong>United States</strong>, you must change server (US is not allowed for Blofin in this guide).</li>
+                  <li>Open the ProtonVPN home screen and click <strong>Change server</strong> or pick a country from the list.</li>
+                  <li>Try to land in <strong>Romania</strong>, <strong>Poland</strong>, <strong>Netherlands</strong>, or <strong>Mexico</strong>.</li>
+                  <li>If the new country is <strong>not</strong> one of those four, wait <strong>1 minute 40 seconds</strong> on a timer — do not click again early.</li>
+                  <li>Click <strong>Change server</strong> again.</li>
+                  <li>If it is still not allowed, wait <strong>1 minute 50 seconds</strong>.</li>
+                  <li>Click <strong>Change server</strong> a third time.</li>
+                  <li>If you are still not in an allowed country, click <strong>Disconnect</strong>, wait 10 seconds, then click <strong>Connect</strong>.</li>
+                  <li>If it connects to the <strong>United States</strong> again, wait up to <strong>10 minutes</strong>, then repeat from the Change server step.</li>
+                  <li>Once connected to an allowed country, open <strong>blofin.com</strong> in the same browser and confirm the site loads and lets you sign up.</li>
+                  <li>Leave ProtonVPN connected whenever you use Blofin in the browser until you finish steps 7–15.</li>
                 </ol>
-                <div class="step-desc"><strong>If you skipped the wizard:</strong> open the <strong>Credentials</strong> tab anytime — use <strong>Re-run setup wizard</strong> or the VPN assistant buttons there.</div>
-                <div class="step-desc">If <strong>blofin.com</strong> already works without VPN in your country, the wizard skips VPN steps. Do not turn VPN on unnecessarily — extra hops can cause login issues.</div>
-                <div class="step-desc">Allowed VPN countries for BloFin: <strong>Romania, Poland, Netherlands, Japan</strong> (Mexico needs a paid Proton plan). Not allowed: <strong>United States, Canada, Singapore</strong>.</div>
+                <div class="step-desc">Allowed countries: <strong>Romania, Poland, Netherlands, Mexico</strong>. Not allowed: <strong>Singapore, United States, Canada</strong>. If Blofin works without VPN, do not use VPN — extra hops can cause login issues.</div>
               </div>
             </div>
 
@@ -368,12 +362,12 @@
               <div class="step-num">7</div>
               <div class="step-body">
                 <div class="step-title">Create a Blofin account</div>
-                <div class="step-desc">This is the exchange where Hermes trades. The first-run wizard opens BloFin signup in-app (step 5). Use your Proton email if you created one.</div>
-                <div class="step-desc"><strong>Click by click (or use the in-app popup from step 5):</strong></div>
+                <div class="step-desc">This is the exchange where Hermes trades. Create the account first, before you buy crypto.</div>
+                <div class="step-desc"><strong>Click by click:</strong></div>
                 <ol class="howto-list">
-                  <li>In KnightTrader, open <strong>Credentials</strong> → <strong>Create BloFin Account</strong> (or finish the first-run wizard).</li>
-                  <li>Complete signup in the popup, then click <strong>Done — continue</strong>.</li>
-                  <li>Enter your email and create a strong password — save it in your notepad and on the <strong>Credentials</strong> tab.</li>
+                  <li>Open <strong>blofin.com</strong> in Chrome or Edge (use VPN step 5 first if Blofin is blocked in your country).</li>
+                  <li>Click <strong>Sign up</strong> or <strong>Get started</strong>.</li>
+                  <li>Enter your email and create a strong password — save it in your notepad.</li>
                   <li>Complete Blofin’s email verification link if sent to your inbox.</li>
                   <li>Complete identity verification (KYC) if Blofin prompts — upload ID photos as requested.</li>
                   <li>Enable <strong>two-factor authentication (2FA)</strong> when offered (Google Authenticator or SMS).</li>
@@ -388,11 +382,12 @@
               <div class="step-num">8</div>
               <div class="step-body">
                 <div class="step-title">Create Blofin API keys</div>
-                <div class="step-desc">Use the in-app wizard or <strong>Credentials</strong> tab: <strong>BloFin Login</strong> → <strong>BloFin API Keys</strong> popups, then <strong>Paste API Keys</strong> — one paste, Done saves everything.</div>
-                <div class="step-desc"><strong>Click by click (or use in-app popups):</strong></div>
+                <div class="step-desc">The app needs three values: API Key, Secret Key, and Passphrase. The file loader can also read them from a text file.</div>
+                <div class="step-desc"><strong>Click by click:</strong></div>
                 <ol class="howto-list">
-                  <li>On <strong>Credentials</strong>, click <strong>BloFin Login</strong> and sign in (VPN on if you needed step 5).</li>
-                  <li>Click <strong>BloFin API Keys</strong> — opens API Management in a popup.</li>
+                  <li>Sign in to <strong>blofin.com</strong> (with VPN on if you needed step 5).</li>
+                  <li>Click your profile icon or avatar (top right).</li>
+                  <li>Open <strong>API Management</strong>, <strong>API</strong>, or <strong>API Keys</strong> from the menu.</li>
                   <li>Click <strong>Create API key</strong> or <strong>New API key</strong>.</li>
                   <li>Name the key something simple like <strong>KT Hermes</strong> so you remember what it is for.</li>
                   <li>Set permissions: enable <strong>Read</strong> if shown separately.</li>
@@ -403,9 +398,10 @@
                   <li>Create a strong <strong>Passphrase</strong> when prompted — write it on your notepad immediately.</li>
                   <li>Click <strong>Confirm</strong> / <strong>Create</strong> and complete any 2FA Blofin requires.</li>
                   <li>Blofin shows the <strong>API Key</strong> and <strong>Secret Key</strong> once — copy both before closing the dialog.</li>
-                  <li>Copy all three values, then click <strong>Paste API Keys</strong> on the Credentials tab (or finish the wizard paste step).</li>
-                  <li>Paste the block once in the popup and click <strong>Done — save credentials</strong> — keys save encrypted and compendium is written automatically.</li>
-                  <li>Alternatively: <strong>Setup</strong> tab fields, or <strong>Load from file…</strong> for a compendium text file.</li>
+                  <li>Paste all three values into your notepad temporarily so you do not lose them.</li>
+                  <li>Open KnightTrader BloFin → <strong>Setup</strong> tab → <strong>Blofin Credentials</strong> section.</li>
+                  <li>Paste into <strong>API Key</strong>, <strong>Secret Key</strong>, and <strong>Passphrase</strong> fields (no extra spaces).</li>
+                  <li>Alternatively, save the three lines in a text file and click <strong>Load from file…</strong> to import.</li>
                   <li>Confirm <strong>LIVE</strong> mode is selected (not demo) unless you intentionally use demo trading.</li>
                   <li>Click <strong>Test Blofin Credentials</strong> once and wait — do not double-click.</li>
                   <li>Read the result: green success means keys work; red error tells you which field failed.</li>
@@ -753,105 +749,11 @@
         </div>
       </section>
 
-      <!-- ── VPN TAB ─────────────────────────────────────────── -->
-      <section id="tab-vpn" class="tab-panel">
-        <div class="panel-header">
-          <h1>VPN &amp; Region</h1>
-          <p class="panel-sub">Live geo check — BloFin only works from allowed countries. We verify your exit IP before trading.</p>
-        </div>
-
-        <div id="vpn-tab-warn" class="vpn-warn hidden">
-          Your connection is <strong>not</strong> in a BloFin-allowed country. Do not trade until this shows green.
-        </div>
-
-        <div class="vpn-card">
-          <div class="vpn-status-row">
-            <div id="vpn-tab-orb" class="vpn-orb"></div>
-            <div class="vpn-status-text">
-              <div id="vpn-tab-status-title">Checking location…</div>
-              <div id="vpn-tab-status-detail" class="muted">—</div>
-            </div>
-          </div>
-          <div id="vpn-tab-verify" class="vpn-verify muted">External IP: —</div>
-          <div id="vpn-tab-updated" class="muted" style="margin-top:6px;font-size:12px">Last checked: —</div>
-        </div>
-
-        <div class="card" style="margin-bottom:18px">
-          <div class="card-header">
-            <div class="card-icon" style="background:rgba(34,197,94,0.12);color:#22c55e">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-            </div>
-            <div>
-              <div class="card-title">Connected country</div>
-              <div class="card-desc">Detected from your public IP (what BloFin sees).</div>
-            </div>
-          </div>
-          <div id="vpn-tab-country-display" style="font-size:28px;font-weight:800;margin:8px 0 4px">—</div>
-          <div id="vpn-tab-blofin-badge" class="muted">BloFin status: checking…</div>
-        </div>
-
-        <div class="field-group" style="max-width:320px;margin-bottom:16px">
-          <div class="field">
-            <label for="vpn-tab-country">Preferred country (free Proton tier)</label>
-            <select id="vpn-tab-country">
-              <option value="random">Auto — try NL → JP → RO → PL</option>
-              <option value="NL">Netherlands (NL)</option>
-              <option value="JP">Japan (JP)</option>
-              <option value="RO">Romania (RO)</option>
-              <option value="PL">Poland (PL)</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="vpn-actions">
-          <button type="button" id="btn-vpn-tab-ensure" class="btn-primary">Ensure BloFin route</button>
-          <button type="button" id="btn-vpn-tab-verify" class="btn-secondary">Verify now</button>
-          <button type="button" id="btn-vpn-tab-proton" class="btn-secondary">Open ProtonVPN</button>
-          <button type="button" id="btn-vpn-tab-signin" class="btn-secondary">Sign in to existing Proton</button>
-          <button type="button" id="btn-vpn-tab-create" class="btn-secondary">Create Proton account</button>
-          <button type="button" id="btn-vpn-tab-disconnect" class="btn-ghost">Disconnect WireGuard</button>
-        </div>
-        <div id="vpn-tab-action" class="vpn-action-confirm">Button clicks on this tab are confirmed here.</div>
-        <div class="card" id="vpn-tab-account" style="margin-bottom:18px">
-          <div class="card-header">
-            <div>
-              <div class="card-title">Proton login for automatic connect</div>
-              <div class="card-desc">After Create or Sign in, click Done — continue in that window, then enter the same email and password here.</div>
-            </div>
-          </div>
-          <div class="field">
-            <label for="vpn-tab-email">Proton email</label>
-            <input type="email" id="vpn-tab-email" placeholder="you@proton.me" autocomplete="off" />
-          </div>
-          <div class="field">
-            <label for="vpn-tab-password">Proton password</label>
-            <input type="password" id="vpn-tab-password" placeholder="Proton password" autocomplete="off" />
-          </div>
-          <button type="button" id="btn-vpn-tab-save-connect" class="btn-primary">Continue — connect automatically</button>
-        </div>
-
-        <div class="vpn-section-title">BloFin-allowed countries (free tier: NL, JP, RO, PL)</div>
-        <div id="vpn-tab-country-grid" class="vpn-country-grid"></div>
-
-        <div class="vpn-help">
-          <div class="vpn-help-title">One-time setup, then automatic</div>
-          <ul class="howto-list">
-            <li><strong>Open ProtonVPN</strong> launches the desktop app (not a browser tab).</li>
-            <li>First time: create Proton account in the wizard popup (CAPTCHA), then sign in to the desktop app once.</li>
-            <li>Connect to a <strong>free</strong> server in NL, JP, RO, or PL — enable Auto-connect in ProtonVPN settings.</li>
-            <li>After the first success, KnightTrader reconnects VPN on every launch with no clicks.</li>
-            <li>Optional: download WireGuard configs (Credentials → Proton VPN Configs) for fully silent reconnects.</li>
-          </ul>
-        </div>
-
-        <div id="vpn-tab-log" class="vpn-onboard-log" style="margin-top:16px;max-height:180px"></div>
-      </section>
-
       <!-- ── CREDENTIALS TAB ───────────────────────────────── -->
       <section id="tab-credentials" class="tab-panel">
         <div class="panel-header">
           <h1>Account Credentials</h1>
-          <p class="panel-sub">Proton + BloFin account logins stored encrypted on this PC. VPN status lives on the <strong>VPN</strong> tab.</p>
+          <p class="panel-sub">Proton + BloFin account logins stored encrypted on this PC.</p>
         </div>
 
         <div class="card">
@@ -1385,9 +1287,9 @@
         </div>
         <p id="vpn-wait-cycle" class="vpn-wait-cycle">Please wait…</p>
         <div class="first-run-actions">
-          <button type="button" id="vpn-wait-show-tab" class="btn-ghost">View VPN tab</button>
+          <button type="button" id="vpn-wait-show-tab" class="btn-ghost">View Credentials</button>
         </div>
-        <p class="vpn-wait-footnote muted">Do not trade until this message goes away and the VPN tab shows green.</p>
+        <p class="vpn-wait-footnote muted">Do not trade until this message goes away and your exit country is BloFin-allowed.</p>
       </div>
     </div>
 
