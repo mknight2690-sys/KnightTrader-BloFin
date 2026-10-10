@@ -60,10 +60,6 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           <span>How-To</span>
         </li>
-        <li class="nav-item" data-tab="credentials">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          <span>Credentials</span>
-        </li>
         <li class="nav-item" data-tab="setup">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
           <span>Setup</span>
@@ -749,100 +745,6 @@
         </div>
       </section>
 
-      <!-- ── CREDENTIALS TAB ───────────────────────────────── -->
-      <section id="tab-credentials" class="tab-panel">
-        <div class="panel-header">
-          <h1>Account Credentials</h1>
-          <p class="panel-sub">Proton + BloFin account logins stored encrypted on this PC.</p>
-        </div>
-
-        <div class="card">
-          <div class="card-header">
-            <div class="card-icon" style="background:rgba(99,102,241,0.12);color:#818cf8">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            </div>
-            <div>
-              <div class="card-title">Proton &amp; BloFin accounts</div>
-              <div class="card-desc">Saved during the first-run wizard — edit anytime.</div>
-            </div>
-          </div>
-          <div class="field-group">
-            <div class="field">
-              <label for="cred-proton-email">Proton email (VPN + free mail for BloFin)</label>
-              <input type="email" id="cred-proton-email" placeholder="you@proton.me" autocomplete="off" />
-            </div>
-            <div class="field">
-              <label for="cred-proton-password">Proton password</label>
-              <div class="input-wrap">
-                <input type="password" id="cred-proton-password" placeholder="Proton account password" autocomplete="off" />
-                <button type="button" class="toggle-vis" data-target="cred-proton-password">👁</button>
-              </div>
-            </div>
-            <div class="field">
-              <label for="cred-blofin-account-email">BloFin account email</label>
-              <input type="email" id="cred-blofin-account-email" placeholder="Same as Proton email if you used it" autocomplete="off" />
-            </div>
-            <div class="form-actions" style="margin-top:8px">
-              <div id="cred-save-status" class="save-status"></div>
-              <button type="button" id="btn-save-account-creds" class="btn-primary">Save account credentials</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- VPN + signup onboarding assistant -->
-        <div class="card vpn-onboard-card" style="margin-top:18px">
-          <div class="card-header">
-            <div class="card-icon" style="background:rgba(34,197,94,0.12);color:#22c55e">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-            </div>
-            <div>
-              <div class="card-title">Region &amp; VPN Assistant</div>
-              <div class="card-desc">ProtonVPN sandboxed under this app. Signup popups open in-app — click Done when finished.</div>
-            </div>
-          </div>
-          <div class="vpn-onboard-panel">
-            <div id="vpn-onboard-banner" class="vpn-onboard-banner hidden">
-              <div id="vpn-onboard-banner-title" class="vpn-onboard-banner-title">Checking location…</div>
-              <div id="vpn-onboard-banner-text" class="vpn-onboard-banner-text"></div>
-            </div>
-            <div class="field">
-              <label for="vpn-country">Preferred VPN country (free tier)</label>
-              <div class="select-wrap">
-                <select id="vpn-country">
-                  <option value="random">Auto — try NL → JP → RO → PL</option>
-                  <option value="NL">Netherlands</option>
-                  <option value="JP">Japan</option>
-                  <option value="RO">Romania</option>
-                  <option value="PL">Poland</option>
-                </select>
-              </div>
-            </div>
-            <div class="vpn-onboard-actions">
-              <button type="button" id="btn-vpn-auto-setup" class="btn-primary">Auto VPN Setup</button>
-              <button type="button" id="btn-vpn-check" class="btn-secondary">Check Location</button>
-              <button type="button" id="btn-rerun-wizard" class="btn-secondary">Re-run setup wizard</button>
-            </div>
-            <div class="vpn-onboard-signup-row">
-              <button type="button" id="btn-signup-proton" class="btn-secondary">Create @proton.me email ↗</button>
-              <button type="button" id="btn-signin-proton" class="btn-secondary">Sign in to existing Proton VPN ↗</button>
-              <button type="button" id="btn-signup-proton-mail" class="btn-secondary">Open Proton Mail ↗</button>
-              <button type="button" id="btn-signup-gmail" class="btn-secondary">Create Gmail (optional) ↗</button>
-              <button type="button" id="btn-signup-blofin" class="btn-secondary">Create BloFin Account ↗</button>
-              <button type="button" id="btn-signup-blofin-login" class="btn-secondary">BloFin Login ↗</button>
-              <button type="button" id="btn-signup-blofin-api" class="btn-secondary">BloFin API Keys ↗</button>
-              <button type="button" id="btn-paste-blofin-api" class="btn-primary">Paste BloFin API Keys ↗</button>
-              <button type="button" id="btn-paste-nous-api" class="btn-secondary">Paste Nous API Key ↗</button>
-              <button type="button" id="btn-signup-coinbase" class="btn-secondary">Coinbase Signup ↗</button>
-              <button type="button" id="btn-signup-coinbase-buy" class="btn-secondary">Buy USDT ↗</button>
-              <button type="button" id="btn-signup-blofin-deposit" class="btn-secondary">BloFin Deposit ↗</button>
-              <button type="button" id="btn-signup-proton-downloads" class="btn-secondary">Proton VPN Configs ↗</button>
-            </div>
-            <p class="vpn-onboard-note">Use <strong>Re-run setup wizard</strong> anytime — the app detects what is already done and only walks you through missing steps.</p>
-            <div id="vpn-status" class="vpn-onboard-log"></div>
-          </div>
-        </div>
-      </section>
-
       <!-- ── SETUP TAB ─────────────────────────────────────── -->
       <section id="tab-setup" class="tab-panel">
         <div class="panel-header">
@@ -954,6 +856,91 @@
                 <button type="button" id="btn-test-blofin" class="btn-secondary" disabled>Test Blofin Credentials</button>
                 <span id="blofin-test-status" class="nous-test-status"></span>
               </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-icon" style="background:rgba(99,102,241,0.12);color:#818cf8">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </div>
+              <div>
+                <div class="card-title">Proton &amp; BloFin accounts</div>
+                <div class="card-desc">Saved during the first-run wizard — edit anytime.</div>
+              </div>
+            </div>
+            <div class="field-group">
+              <div class="field">
+                <label for="cred-proton-email">Proton email (VPN + free mail for BloFin)</label>
+                <input type="email" id="cred-proton-email" placeholder="you@proton.me" autocomplete="off" />
+              </div>
+              <div class="field">
+                <label for="cred-proton-password">Proton password</label>
+                <div class="input-wrap">
+                  <input type="password" id="cred-proton-password" placeholder="Proton account password" autocomplete="off" />
+                  <button type="button" class="toggle-vis" data-target="cred-proton-password">👁</button>
+                </div>
+              </div>
+              <div class="field">
+                <label for="cred-blofin-account-email">BloFin account email</label>
+                <input type="email" id="cred-blofin-account-email" placeholder="Same as Proton email if you used it" autocomplete="off" />
+              </div>
+              <div class="form-actions" style="margin-top:8px">
+                <div id="cred-save-status" class="save-status"></div>
+                <button type="button" id="btn-save-account-creds" class="btn-primary">Save account credentials</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card vpn-onboard-card">
+            <div class="card-header">
+              <div class="card-icon" style="background:rgba(34,197,94,0.12);color:#22c55e">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              </div>
+              <div>
+                <div class="card-title">Region &amp; VPN Assistant</div>
+                <div class="card-desc">ProtonVPN sandboxed under this app. Signup popups open in-app — click Done when finished.</div>
+              </div>
+            </div>
+            <div class="vpn-onboard-panel">
+              <div id="vpn-onboard-banner" class="vpn-onboard-banner hidden">
+                <div id="vpn-onboard-banner-title" class="vpn-onboard-banner-title">Checking location…</div>
+                <div id="vpn-onboard-banner-text" class="vpn-onboard-banner-text"></div>
+              </div>
+              <div class="field">
+                <label for="vpn-country">Preferred VPN country (free tier)</label>
+                <div class="select-wrap">
+                  <select id="vpn-country">
+                    <option value="random">Auto — try NL → JP → RO → PL</option>
+                    <option value="NL">Netherlands</option>
+                    <option value="JP">Japan</option>
+                    <option value="RO">Romania</option>
+                    <option value="PL">Poland</option>
+                  </select>
+                </div>
+              </div>
+              <div class="vpn-onboard-actions">
+                <button type="button" id="btn-vpn-auto-setup" class="btn-primary">Auto VPN Setup</button>
+                <button type="button" id="btn-vpn-check" class="btn-secondary">Check Location</button>
+                <button type="button" id="btn-rerun-wizard" class="btn-secondary">Re-run setup wizard</button>
+              </div>
+              <div class="vpn-onboard-signup-row">
+                <button type="button" id="btn-signup-proton" class="btn-secondary">Create @proton.me email ↗</button>
+                <button type="button" id="btn-signin-proton" class="btn-secondary">Sign in to existing Proton VPN ↗</button>
+                <button type="button" id="btn-signup-proton-mail" class="btn-secondary">Open Proton Mail ↗</button>
+                <button type="button" id="btn-signup-gmail" class="btn-secondary">Create Gmail (optional) ↗</button>
+                <button type="button" id="btn-signup-blofin" class="btn-secondary">Create BloFin Account ↗</button>
+                <button type="button" id="btn-signup-blofin-login" class="btn-secondary">BloFin Login ↗</button>
+                <button type="button" id="btn-signup-blofin-api" class="btn-secondary">BloFin API Keys ↗</button>
+                <button type="button" id="btn-paste-blofin-api" class="btn-primary">Paste BloFin API Keys ↗</button>
+                <button type="button" id="btn-paste-nous-api" class="btn-secondary">Paste Nous API Key ↗</button>
+                <button type="button" id="btn-signup-coinbase" class="btn-secondary">Coinbase Signup ↗</button>
+                <button type="button" id="btn-signup-coinbase-buy" class="btn-secondary">Buy USDT ↗</button>
+                <button type="button" id="btn-signup-blofin-deposit" class="btn-secondary">BloFin Deposit ↗</button>
+                <button type="button" id="btn-signup-proton-downloads" class="btn-secondary">Proton VPN Configs ↗</button>
+              </div>
+              <p class="vpn-onboard-note">Use <strong>Re-run setup wizard</strong> anytime — the app detects what is already done and only walks you through missing steps.</p>
+              <div id="vpn-status" class="vpn-onboard-log"></div>
             </div>
           </div>
 

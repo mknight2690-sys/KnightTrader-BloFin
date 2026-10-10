@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableDelayedExpansion
-REM Wait for app exit → silent NSIS update → relaunch with retries.
+REM Wait for app exit → silent NSIS update → find exe → relaunch.
 set "INSTALLER=%~1"
 set "INSTDIR=%~2"
 set "EXE=%~3"
@@ -8,6 +8,7 @@ set "OLD_PID=%~4"
 set "FLAG=%~5"
 set "LOG=%TEMP%\knighttrader-update.log"
 set "LOCK=%TEMP%\knighttrader-update.lock"
+set "EXE_NAME=KnightTrader Blofin.exe"
 
 >>"%LOG%" echo === update-install %date% %time% ===
 >>"%LOG%" echo installer=%INSTALLER%
@@ -31,7 +32,7 @@ if "%INSTDIR%"=="" (
 )
 
 if not "%INSTDIR:~-1%"=="\" set "INSTDIR=%INSTDIR%\"
-if "%EXE%"=="" set "EXE=%INSTDIR%KnightTrader Blofin.exe"
+if "%EXE%"=="" set "EXE=%INSTDIR%%EXE_NAME%"
 if "%FLAG%"=="" set "FLAG=%APPDATA%\knight-trader\kt-relaunch-ok.flag"
 
 if not "%OLD_PID%"=="" if not "%OLD_PID%"=="0" (
@@ -49,54 +50,50 @@ if not "%OLD_PID%"=="" if not "%OLD_PID%"=="0" (
 
 :after_wait
 >>"%LOG%" echo killing leftover app / hermes
-taskkill /F /IM "KnightTrader Blofin.exe" /T >nul 2>&1
+taskkill /F /IM "%EXE_NAME%" /T >nul 2>&1
 taskkill /F /IM "hermes.exe" /T >nul 2>&1
 timeout /t 3 /nobreak >nul
 
-REM Do NOT pass /D= — paths with spaces break NSIS argv splitting.
-REM Same productId installs into the previous INSTDIR from the registry.
+REM Never pass /D= — spaces in "KnightTrader Blofin" break NSIS argv splitting
+REM and can land files under Programs\KnightTrader instead.
 >>"%LOG%" echo running installer /S /CURRENTUSER
 start /wait "" "%INSTALLER%" /S /CURRENTUSER
 set "RC=!ERRORLEVEL!"
 >>"%LOG%" echo installer exit code !RC!
 
-timeout /t 3 /nobreak >nul
+timeout /t 4 /nobreak >nul
 
-if not exist "%EXE%" if exist "%INSTDIR%KnightTrader Blofin.exe" set "EXE=%INSTDIR%KnightTrader Blofin.exe"
-if not exist "%EXE%" if exist "%LOCALAPPDATA%\Programs\KnightTrader Blofin\KnightTrader Blofin.exe" (
-  set "EXE=%LOCALAPPDATA%\Programs\KnightTrader Blofin\KnightTrader Blofin.exe"
-  set "INSTDIR=%LOCALAPPDATA%\Programs\KnightTrader Blofin\"
-)
-
-if not exist "%EXE%" (
-  >>"%LOG%" echo ERROR exe missing after install: %EXE%
+call :resolve_exe
+if not exist "!EXE!" (
+  >>"%LOG%" echo ERROR exe missing after install — searched known paths
   del "%LOCK%" 2>nul
   exit /b 1
 )
 
->>"%LOG%" echo install ok — launching with retries: %EXE%
+>>"%LOG%" echo install ok — launching: !EXE!
+>>"%LOG%" echo working dir: !INSTDIR!
 del "%FLAG%" 2>nul
 
-REM Prefer relaunch-loop (retries until process/flag). Fall back to PowerShell Start-Process.
-if exist "%INSTDIR%relaunch-loop.bat" (
-  >>"%LOG%" echo using relaunch-loop.bat
-  start "" /MIN cmd.exe /d /c call "%INSTDIR%relaunch-loop.bat" "%INSTDIR%" "0" "%FLAG%" "KnightTrader-Blofin-Setup"
-  del "%LOCK%" 2>nul
-  exit /b 0
+REM Launch directly via PowerShell (most reliable). Also kick relaunch-loop as backup.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '!EXE!' -ArgumentList '--updated' -WorkingDirectory '!INSTDIR!'" >>"%LOG%" 2>&1
+timeout /t 2 /nobreak >nul
+start "" /MIN cmd.exe /d /c start "" /D "!INSTDIR!" "!EXE!" --updated
+
+if exist "!INSTDIR!relaunch-loop.bat" (
+  >>"%LOG%" echo also arming relaunch-loop.bat
+  start "" /MIN cmd.exe /d /c call "!INSTDIR!relaunch-loop.bat" "!INSTDIR!" "0" "%FLAG%" "KnightTrader-Blofin-Setup"
 )
 
 set /a N=0
-:retry_launch
+:retry_check
 set /a N+=1
-if !N! GTR 30 (
-  >>"%LOG%" echo ERROR gave up launching after !N! tries
+if !N! GTR 20 (
+  >>"%LOG%" echo WARN process not confirmed after !N! checks — relaunch was attempted
   del "%LOCK%" 2>nul
-  exit /b 1
+  exit /b 0
 )
->>"%LOG%" echo launch attempt !N!
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%EXE%' -ArgumentList '--updated' -WorkingDirectory '%INSTDIR%'" >>"%LOG%" 2>&1
-timeout /t 8 /nobreak >nul
-tasklist /FI "IMAGENAME eq KnightTrader Blofin.exe" 2>nul | find /I "KnightTrader Blofin.exe" >nul
+timeout /t 3 /nobreak >nul
+tasklist /FI "IMAGENAME eq %EXE_NAME%" 2>nul | find /I "%EXE_NAME%" >nul
 if !ERRORLEVEL!==0 (
   >>"%LOG%" echo SUCCESS process running
   del "%LOCK%" 2>nul
@@ -107,5 +104,42 @@ if exist "%FLAG%" (
   del "%LOCK%" 2>nul
   exit /b 0
 )
-timeout /t 2 /nobreak >nul
-goto retry_launch
+if !N! EQU 5 (
+  >>"%LOG%" echo retry Start-Process at check !N!
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '!EXE!' -ArgumentList '--updated' -WorkingDirectory '!INSTDIR!'" >>"%LOG%" 2>&1
+)
+if !N! EQU 10 (
+  >>"%LOG%" echo retry start at check !N!
+  start "" /D "!INSTDIR!" "!EXE!" --updated
+)
+goto retry_check
+
+:resolve_exe
+if exist "%EXE%" (
+  for %%I in ("%EXE%") do set "INSTDIR=%%~dpI"
+  goto :eof
+)
+if exist "%INSTDIR%%EXE_NAME%" (
+  set "EXE=%INSTDIR%%EXE_NAME%"
+  goto :eof
+)
+if exist "%LOCALAPPDATA%\Programs\KnightTrader\%EXE_NAME%" (
+  set "EXE=%LOCALAPPDATA%\Programs\KnightTrader\%EXE_NAME%"
+  set "INSTDIR=%LOCALAPPDATA%\Programs\KnightTrader\"
+  >>"%LOG%" echo resolved exe under Programs\KnightTrader
+  goto :eof
+)
+if exist "%LOCALAPPDATA%\Programs\KnightTrader Blofin\%EXE_NAME%" (
+  set "EXE=%LOCALAPPDATA%\Programs\KnightTrader Blofin\%EXE_NAME%"
+  set "INSTDIR=%LOCALAPPDATA%\Programs\KnightTrader Blofin\"
+  >>"%LOG%" echo resolved exe under Programs\KnightTrader Blofin
+  goto :eof
+)
+REM Last resort: where.exe under Local\Programs
+for /f "delims=" %%P in ('dir /s /b "%LOCALAPPDATA%\Programs\%EXE_NAME%" 2^>nul') do (
+  set "EXE=%%P"
+  for %%I in ("%%P") do set "INSTDIR=%%~dpI"
+  >>"%LOG%" echo resolved exe via dir search: %%P
+  goto :eof
+)
+goto :eof
