@@ -3083,6 +3083,14 @@ async function triggerAndConfirmCron(token, jobId) {
     }
     if (job.last_status === 'error') {
       const err = String(job.last_error || 'unknown error');
+      if (isRateLimitSignal(err)) {
+        appendLog(`⚠ Cron tick rate-limited: ${err}`, 'error');
+        const failedModel = normalizeNousModel(
+          job.model || job.spec?.model || storeData.nous?.model || '',
+        );
+        rotateAwayFromRateLimitedModel(failedModel, 'configure-confirm-429').catch(() => {});
+        return;
+      }
       const hint = /invalid|blocked|out of funds/i.test(err)
         ? ' — cron did not receive the Nous API key. Save Setup again, then Configure Cron.'
         : '';
@@ -3212,12 +3220,57 @@ function testNousCredentials(apiKey, model) {
   });
 }
 
-// ── Free-model auto-ping on startup ────────────────────────────────────────
-// Pings every free model in the catalog with a tiny "Reply with: PONG" request,
-// picks the first one that returns a non-empty reply (a "pong"), auto-selects
-// it, and forwards the new model to the existing cron job WITHOUT touching
-// the user's cron prompt. This keeps Hermes on a working free model so the
-// user doesn't see "1 message" ticks where the model failed mid-turn.
+// ── Free-model auto-ping + runtime rate-limit rotation ─────────────────────
+// Startup: ping free models, pick first "pong", push to ALL cron jobs.
+// Runtime: watch cron ticks + proactive health pings; on 429 / rate-limit,
+// blacklist the failing model and switch ALL cron jobs BEFORE the next tick.
+const MODEL_BLACKLIST_TTL_MS = 30 * 60 * 1000;
+const CRON_MODEL_WATCH_MS = 20 * 1000;
+const PROACTIVE_MODEL_PING_MS = 90 * 1000;
+const MODEL_ROTATE_COOLDOWN_MS = 45 * 1000;
+/** @type {Map<string, number>} modelId -> blacklist expiry ms */
+const rateLimitedModels = new Map();
+let cronModelWatchTimer = null;
+let modelRotateInFlight = null;
+let lastModelRotateAt = 0;
+/** @type {Map<string, string>} jobId -> last handled run fingerprint */
+const cronRateLimitHandled = new Map();
+let lastProactivePingAt = 0;
+
+function isRateLimitSignal(text) {
+  const s = String(text || '');
+  if (!s) return false;
+  return /HTTP\s*429\b/i.test(s)
+    || /\brate\s*limit/i.test(s)
+    || /exceeded the rate limit/i.test(s)
+    || /hold up for a bit/i.test(s)
+    || /too many requests/i.test(s)
+    || /\bRPM\b/.test(s)
+    || /quota.?exceeded/i.test(s)
+    || /http-429/i.test(s);
+}
+
+function pruneModelBlacklist() {
+  const now = Date.now();
+  for (const [id, until] of rateLimitedModels.entries()) {
+    if (until <= now) rateLimitedModels.delete(id);
+  }
+}
+
+function blacklistModel(model, reason = 'rate-limit') {
+  const mdl = normalizeNousModel(model);
+  if (!mdl) return;
+  rateLimitedModels.set(mdl, Date.now() + MODEL_BLACKLIST_TTL_MS);
+  appendLog(`⛔ Blacklisting ${mdl} for ${Math.round(MODEL_BLACKLIST_TTL_MS / 60000)}m (${reason})`, 'warn');
+}
+
+function isModelBlacklisted(model) {
+  pruneModelBlacklist();
+  const mdl = normalizeNousModel(model);
+  if (!mdl) return false;
+  return rateLimitedModels.has(mdl);
+}
+
 function pingNousModel(apiKey, model, timeoutMs = 25000) {
   const key = String(apiKey || '').trim();
   const mdl = normalizeNousModel(model);
@@ -3261,7 +3314,14 @@ function pingNousModel(apiKey, model, timeoutMs = 25000) {
             done({ ok: false, error: 'empty-reply', model: mdl });
           }
         } else {
-          done({ ok: false, error: `http-${res.statusCode}`, model: mdl });
+          const errText = `http-${res.statusCode} ${raw.slice(0, 240)}`;
+          done({
+            ok: false,
+            error: `http-${res.statusCode}`,
+            model: mdl,
+            rateLimited: res.statusCode === 429 || isRateLimitSignal(errText),
+            detail: raw.slice(0, 240),
+          });
         }
       });
     });
@@ -3278,7 +3338,10 @@ async function getFreeModelCandidates() {
   return free.length ? free : FALLBACK_FREE_NOUS_MODELS;
 }
 
-async function autoSelectWorkingFreeModel() {
+/**
+ * @param {{ excludeModels?: string[], preferCurrent?: boolean, reason?: string }} [opts]
+ */
+async function autoSelectWorkingFreeModel(opts = {}) {
   const apiKey = String(storeData.nous?.apiKey || '').trim();
   if (!apiKey) {
     appendLog('ℹ Skipping free-model auto-ping: no Nous API key saved.', 'info');
@@ -3291,15 +3354,33 @@ async function autoSelectWorkingFreeModel() {
     return { ok: false, reason: 'no-free-models' };
   }
 
-  appendLog(`🔎 Auto-pinging ${candidates.length} free models to find a working one…`, 'info');
+  pruneModelBlacklist();
+  const exclude = new Set(
+    [...(opts.excludeModels || []), ...rateLimitedModels.keys()]
+      .map((m) => normalizeNousModel(m))
+      .filter(Boolean),
+  );
   const current = normalizeNousModel(storeData.nous?.model || DEFAULT_NOUS_MODEL);
+  const preferCurrent = opts.preferCurrent !== false && !exclude.has(current);
+  const reason = opts.reason ? ` (${opts.reason})` : '';
 
-  // Try the currently-selected model first (so we don't churn if it works),
-  // then the rest in catalog order.
-  const ordered = [
-    ...candidates.filter((m) => normalizeNousModel(m.id) === current),
-    ...candidates.filter((m) => normalizeNousModel(m.id) !== current),
-  ];
+  appendLog(`🔎 Auto-pinging free models${reason}…`, 'info');
+
+  const usable = candidates.filter((m) => !exclude.has(normalizeNousModel(m.id)));
+  if (!usable.length) {
+    appendLog('⚠ All free models are blacklisted/unavailable right now.', 'warn');
+    return { ok: false, reason: 'all-blacklisted', model: current };
+  }
+
+  // Prefer current first only when it is not excluded (startup / healthy path).
+  // On rate-limit rotation, skip the failing model so we switch immediately.
+  const ordered = preferCurrent
+    ? [
+      ...usable.filter((m) => normalizeNousModel(m.id) === current),
+      ...usable.filter((m) => normalizeNousModel(m.id) !== current),
+    ]
+    : usable.filter((m) => normalizeNousModel(m.id) !== current)
+      .concat(usable.filter((m) => normalizeNousModel(m.id) === current));
 
   for (const m of ordered) {
     const mdl = normalizeNousModel(m.id);
@@ -3316,8 +3397,16 @@ async function autoSelectWorkingFreeModel() {
       } catch (e) {
         appendLog(`ℹ Cron model forward skipped: ${e.message}`, 'info');
       }
-      broadcastUpdate('kt-free-model-selected', { model: mdl, reply: res.reply, changed });
+      broadcastUpdate('kt-free-model-selected', {
+        model: mdl,
+        reply: res.reply,
+        changed,
+        reason: opts.reason || 'select',
+      });
       return { ok: true, model: mdl, reply: res.reply, changed };
+    }
+    if (res.rateLimited || isRateLimitSignal(res.error) || isRateLimitSignal(res.detail)) {
+      blacklistModel(mdl, res.error || 'ping-429');
     }
     appendLog(`  ✗ ${mdl}: ${res.error || 'no pong'}`, 'warn');
   }
@@ -3325,6 +3414,146 @@ async function autoSelectWorkingFreeModel() {
   appendLog('⚠ No free model responded. Keeping current selection; cron may produce incomplete ticks.', 'warn');
   broadcastUpdate('kt-free-model-selected', { model: current, changed: false, failed: true });
   return { ok: false, reason: 'all-failed', model: current };
+}
+
+async function rotateAwayFromRateLimitedModel(failedModel, reason = 'rate-limit') {
+  const failed = normalizeNousModel(failedModel || storeData.nous?.model || '');
+  if (modelRotateInFlight) return modelRotateInFlight;
+  if (Date.now() - lastModelRotateAt < MODEL_ROTATE_COOLDOWN_MS) {
+    return { ok: false, reason: 'cooldown' };
+  }
+  if (failed) blacklistModel(failed, reason);
+
+  modelRotateInFlight = (async () => {
+    try {
+      appendLog(`🔄 Rate-limit rotation: leaving ${failed || '(unknown)'} — finding another free model…`, 'warn');
+      const result = await autoSelectWorkingFreeModel({
+        excludeModels: failed ? [failed] : [],
+        preferCurrent: false,
+        reason: `rotate-from-${failed || 'unknown'}`,
+      });
+      if (result?.ok && result.changed) {
+        lastModelRotateAt = Date.now();
+        appendLog(`✅ Switched all cron jobs to ${result.model} before the next tick`, 'success');
+      } else if (result?.ok) {
+        lastModelRotateAt = Date.now();
+        appendLog(`ℹ Rotation kept ${result.model} (already selected)`, 'info');
+      } else {
+        appendLog(`⚠ Rotation could not find a working free model (${result?.reason || 'unknown'})`, 'warn');
+      }
+      return result;
+    } finally {
+      modelRotateInFlight = null;
+    }
+  })();
+  return modelRotateInFlight;
+}
+
+function readAllCronJobRecords() {
+  try {
+    const jobsPath = path.join(HERMES_HOME, 'cron', 'jobs.json');
+    const parsed = JSON.parse(fs.readFileSync(jobsPath, 'utf8'));
+    return Array.isArray(parsed?.jobs) ? parsed.jobs : [];
+  } catch {
+    return [];
+  }
+}
+
+function readNewestCronOutput(jobId) {
+  try {
+    const dir = path.join(HERMES_HOME, 'cron', 'output', String(jobId));
+    if (!fs.existsSync(dir)) return null;
+    const files = fs.readdirSync(dir)
+      .filter((f) => f.endsWith('.md'))
+      .map((f) => {
+        const full = path.join(dir, f);
+        let mtimeMs = 0;
+        try { mtimeMs = fs.statSync(full).mtimeMs; } catch {}
+        return { full, mtimeMs, name: f };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+    if (!files.length) return null;
+    const newest = files[0];
+    const text = fs.readFileSync(newest.full, 'utf8');
+    return { path: newest.full, mtimeMs: newest.mtimeMs, name: newest.name, text };
+  } catch {
+    return null;
+  }
+}
+
+function extractRateLimitFromCronJob(job) {
+  const bits = [
+    job?.last_error,
+    job?.last_status,
+    job?.last_result,
+  ].filter(Boolean).map(String);
+  for (const bit of bits) {
+    if (isRateLimitSignal(bit)) return bit.slice(0, 240);
+  }
+  const out = readNewestCronOutput(job?.id);
+  if (out?.text && isRateLimitSignal(out.text)) {
+    const match = out.text.match(/HTTP\s*429[^\n]{0,160}|rate limit[^\n]{0,160}|Hold up for a bit[^\n]{0,120}/i);
+    return (match?.[0] || 'HTTP 429 in cron output').slice(0, 240);
+  }
+  return null;
+}
+
+async function proactivePingCurrentModel() {
+  const apiKey = String(storeData.nous?.apiKey || '').trim();
+  const current = normalizeNousModel(storeData.nous?.model || '');
+  if (!apiKey || !current) return;
+  if (Date.now() - lastProactivePingAt < PROACTIVE_MODEL_PING_MS) return;
+  lastProactivePingAt = Date.now();
+
+  const res = await pingNousModel(apiKey, current, 15000);
+  if (res.ok) return;
+  if (res.rateLimited || isRateLimitSignal(res.error) || isRateLimitSignal(res.detail)) {
+    appendLog(`⚠ Current model ${current} is rate-limited on health ping — rotating before next cron`, 'warn');
+    await rotateAwayFromRateLimitedModel(current, 'proactive-ping-429');
+  }
+}
+
+async function checkCronJobsForRateLimits() {
+  const jobs = readAllCronJobRecords();
+  if (!jobs.length) return;
+
+  for (const job of jobs) {
+    const signal = extractRateLimitFromCronJob(job);
+    if (!signal) continue;
+    const fingerprint = `${job.last_run_at || ''}|${job.last_status || ''}|${String(job.last_error || '').slice(0, 80)}`;
+    const out = readNewestCronOutput(job.id);
+    const fp2 = out ? `${out.name}|${out.mtimeMs}` : fingerprint;
+    const key = String(job.id || job.name || 'job');
+    if (cronRateLimitHandled.get(key) === fp2) continue;
+    cronRateLimitHandled.set(key, fp2);
+
+    const failedModel = normalizeNousModel(
+      job.model || job.spec?.model || storeData.nous?.model || '',
+    );
+    appendLog(`⚠ Cron "${job.name || key}" hit rate limit: ${signal}`, 'warn');
+    await rotateAwayFromRateLimitedModel(failedModel, `cron-${job.name || key}`);
+    return; // one rotation per watch cycle
+  }
+}
+
+async function cronModelHealthTick() {
+  try {
+    await checkCronJobsForRateLimits();
+    await proactivePingCurrentModel();
+  } catch (e) {
+    appendLog(`ℹ Cron model health watch: ${e.message}`, 'info');
+  }
+}
+
+function startCronModelHealthWatcher() {
+  if (cronModelWatchTimer) return;
+  cronModelWatchTimer = setInterval(() => {
+    cronModelHealthTick().catch(() => {});
+  }, CRON_MODEL_WATCH_MS);
+  cronModelWatchTimer.unref?.();
+  // First reactive pass soon after Hermes is likely up
+  setTimeout(() => { cronModelHealthTick().catch(() => {}); }, 15000);
+  appendLog('👁 Cron model health watcher started (rate-limit → auto-switch)', 'info');
 }
 
 // Update ONLY the model field on every existing cron job, preserving each
@@ -4285,14 +4514,16 @@ app.whenReady().then(async () => {
   startForcedUpdateWatcher();
 
   // Auto-ping free models on startup, pick the first that "pongs", and
-  // forward it to the cron job so the user doesn't see "1 message" ticks
-  // caused by a dead model. Only the model is updated — the user's cron
-  // prompt is preserved.
+  // forward it to ALL cron jobs so the user doesn't see "1 message" ticks
+  // caused by a dead model. Only the model is updated — prompts preserved.
+  // Then keep watching: on HTTP 429 / rate-limit, blacklist and switch
+  // before the next cron tick.
   setTimeout(() => {
-    autoSelectWorkingFreeModel().catch((e) => {
+    autoSelectWorkingFreeModel({ preferCurrent: true, reason: 'startup' }).catch((e) => {
       appendLog(`ℹ Free-model auto-ping failed: ${e.message}`, 'info');
     });
   }, 8000);
+  startCronModelHealthWatcher();
 
   app.on('activate', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
