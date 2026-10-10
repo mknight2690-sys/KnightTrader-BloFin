@@ -3366,11 +3366,10 @@ function testNousCredentials(apiKey, model) {
 
 // ── Free-model auto-ping + runtime rate-limit rotation ─────────────────────
 // Startup: ping free models, pick first "pong", push to ALL cron jobs.
-// Runtime: watch cron ticks + proactive health pings; on 429 / rate-limit,
-// blacklist the failing model and switch ALL cron jobs BEFORE the next tick.
+// Runtime (every 30s): ensure a working free model, then push MODEL ONLY to
+// every cron job (prompts preserved). On 429, blacklist + rotate immediately.
 const MODEL_BLACKLIST_TTL_MS = 30 * 60 * 1000;
-const CRON_MODEL_WATCH_MS = 20 * 1000;
-const PROACTIVE_MODEL_PING_MS = 90 * 1000;
+const CRON_MODEL_WATCH_MS = 30 * 1000;
 const MODEL_ROTATE_COOLDOWN_MS = 45 * 1000;
 /** @type {Map<string, number>} modelId -> blacklist expiry ms */
 const rateLimitedModels = new Map();
@@ -3379,7 +3378,7 @@ let modelRotateInFlight = null;
 let lastModelRotateAt = 0;
 /** @type {Map<string, string>} jobId -> last handled run fingerprint */
 const cronRateLimitHandled = new Map();
-let lastProactivePingAt = 0;
+let cronModelSyncInFlight = null;
 
 function isRateLimitSignal(text) {
   const s = String(text || '');
@@ -3642,21 +3641,6 @@ function extractRateLimitFromCronJob(job) {
   return null;
 }
 
-async function proactivePingCurrentModel() {
-  const apiKey = String(storeData.nous?.apiKey || '').trim();
-  const current = normalizeNousModel(storeData.nous?.model || '');
-  if (!apiKey || !current) return;
-  if (Date.now() - lastProactivePingAt < PROACTIVE_MODEL_PING_MS) return;
-  lastProactivePingAt = Date.now();
-
-  const res = await pingNousModel(apiKey, current, 15000);
-  if (res.ok) return;
-  if (res.rateLimited || isRateLimitSignal(res.error) || isRateLimitSignal(res.detail)) {
-    appendLog(`⚠ Current model ${current} is rate-limited on health ping — rotating before next cron`, 'warn');
-    await rotateAwayFromRateLimitedModel(current, 'proactive-ping-429');
-  }
-}
-
 async function checkCronJobsForRateLimits() {
   const jobs = readAllCronJobRecords();
   if (!jobs.length) return;
@@ -3680,10 +3664,55 @@ async function checkCronJobsForRateLimits() {
   }
 }
 
+/**
+ * Every 30s: keep a working free model selected, then push MODEL ONLY to every
+ * cron job (prompts untouched). Retries if Hermes was down at startup.
+ */
+async function ensureWorkingModelAndPushToCrons() {
+  if (cronModelSyncInFlight || modelRotateInFlight) return cronModelSyncInFlight || modelRotateInFlight;
+  const apiKey = String(storeData.nous?.apiKey || '').trim();
+  if (!apiKey) return { ok: false, reason: 'no-api-key' };
+
+  cronModelSyncInFlight = (async () => {
+    try {
+      let current = normalizeNousModel(storeData.nous?.model || '');
+
+      if (current && !isModelBlacklisted(current)) {
+        const res = await pingNousModel(apiKey, current, 15000);
+        if (res.ok) {
+          return await updateCronModelOnly(current);
+        }
+        if (res.rateLimited || isRateLimitSignal(res.error) || isRateLimitSignal(res.detail)) {
+          appendLog(`⚠ ${current} rate-limited on 30s watch — rotating all crons`, 'warn');
+          return await rotateAwayFromRateLimitedModel(current, 'watch-30s-429');
+        }
+        // Soft failure (timeout/empty) — still try another free model
+        appendLog(`⚠ ${current} unhealthy (${res.error || 'no pong'}) — reselecting free model`, 'warn');
+      }
+
+      const selected = await autoSelectWorkingFreeModel({
+        preferCurrent: false,
+        reason: '30s-watch',
+      });
+      if (selected?.ok && selected.model) {
+        // autoSelect already calls updateCronModelOnly; push again if that failed
+        current = selected.model;
+      } else {
+        current = normalizeNousModel(storeData.nous?.model || '');
+      }
+      if (current) return await updateCronModelOnly(current);
+      return { ok: false, reason: 'no-model' };
+    } finally {
+      cronModelSyncInFlight = null;
+    }
+  })();
+  return cronModelSyncInFlight;
+}
+
 async function cronModelHealthTick() {
   try {
     await checkCronJobsForRateLimits();
-    await proactivePingCurrentModel();
+    await ensureWorkingModelAndPushToCrons();
   } catch (e) {
     appendLog(`ℹ Cron model health watch: ${e.message}`, 'info');
   }
@@ -3695,9 +3724,9 @@ function startCronModelHealthWatcher() {
     cronModelHealthTick().catch(() => {});
   }, CRON_MODEL_WATCH_MS);
   cronModelWatchTimer.unref?.();
-  // First reactive pass soon after Hermes is likely up
-  setTimeout(() => { cronModelHealthTick().catch(() => {}); }, 15000);
-  appendLog('👁 Cron model health watcher started (rate-limit → auto-switch)', 'info');
+  // First sync soon after Hermes is likely up, then every 30s
+  setTimeout(() => { cronModelHealthTick().catch(() => {}); }, 12000);
+  appendLog('👁 Cron model watcher started (every 30s → sync model to all crons)', 'info');
 }
 
 // Update ONLY the model field on every existing cron job, preserving each
@@ -3726,9 +3755,18 @@ async function updateCronModelOnly(model) {
     return { ok: false, msg: 'no-existing-job' };
   }
 
+  // Only PUT jobs whose model field differs — still covers ALL crons that need sync.
+  const stale = jobs.filter((job) => {
+    const jobModel = normalizeNousModel(job.model || job.spec?.model || '');
+    return jobModel !== mdl;
+  });
+  if (!stale.length) {
+    return { ok: true, model: mdl, updated: 0, total: jobs.length, skipped: true };
+  }
+
   let okCount = 0;
   const failures = [];
-  for (const job of jobs) {
+  for (const job of stale) {
     const existingPrompt = job.prompt || job.spec?.prompt || null;
     const updates = {
       provider: 'custom',
@@ -3756,7 +3794,10 @@ async function updateCronModelOnly(model) {
   }
 
   if (okCount > 0) {
-    appendLog(`✅ Cron model ${mdl} applied to ${okCount}/${jobs.length} job(s) (prompts preserved)`, 'success');
+    appendLog(
+      `✅ Cron model → ${mdl} on ${okCount}/${stale.length} stale job(s) (${jobs.length} total; prompts preserved)`,
+      'success',
+    );
     return { ok: true, model: mdl, updated: okCount, total: jobs.length, failures };
   }
   return { ok: false, msg: failures.join('; ') || 'all-failed', total: jobs.length };
