@@ -143,7 +143,7 @@
 
   function goToCredentialsTab() {
     try {
-      document.querySelector('.nav-item[data-tab="credentials"]')?.click();
+      document.querySelector('.nav-item[data-tab="setup"]')?.click();
     } catch (_) {}
   }
 

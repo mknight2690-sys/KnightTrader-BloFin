@@ -403,10 +403,20 @@ function spawnUpdateRunner(installerPath) {
     try { fs.writeFileSync(logPath, `armed ${new Date().toISOString()} runner=${runnerBat}\n`, 'utf8'); } catch (_) {}
     const oldPid = Number(process.pid) || 0;
     const exePath = process.execPath;
-    // Spawn the bat directly — nested `start /MIN` often never runs (no log).
+    // Bake args into a tiny TEMP launcher, then `start /MIN` it so the
+    // update process fully detaches and survives app.exit().
+    const launchBat = path.join(os.tmpdir(), 'knighttrader-run-update.bat');
+    const launchBody = [
+      '@echo off',
+      `>>"${logPath}" echo launch-wrapper %date% %time%`,
+      `call "${runnerBat}" "${installerPath}" "${installDir}" "${exePath}" ${oldPid} "${flagPath}"`,
+      'exit /b %ERRORLEVEL%',
+      '',
+    ].join('\r\n');
+    fs.writeFileSync(launchBat, launchBody, 'utf8');
     const child = spawn(
       'cmd.exe',
-      ['/d', '/c', 'call', runnerBat, installerPath, installDir, exePath, String(oldPid), flagPath],
+      ['/d', '/c', 'start', 'KTUpdate', '/MIN', launchBat],
       { detached: true, stdio: 'ignore', windowsHide: true, cwd: os.tmpdir() },
     );
     child.unref();
