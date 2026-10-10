@@ -299,6 +299,7 @@ function clearPendingUpdateMarkers() {
 
 function reportStuckUpdateIfNeeded() {
   if (!app.isPackaged) return;
+  if (IS_POST_UPDATE_LAUNCH || readUpdateCooldown()) return;
   try {
     const userData = app.getPath('userData');
     const pendingPath = path.join(userData, 'kt-pending-version.txt');
@@ -310,6 +311,7 @@ function reportStuckUpdateIfNeeded() {
         `⚠ Update to v${pending} did not apply (still on v${current}). Clearing cache and retrying full installer…`,
         'warn'
       );
+      writeUpdateCooldown(5 * 60 * 1000);
       updateDownloadedInfo = null;
       downloadedInstallerPath = null;
       updateDownloadUsedFallback = false;
@@ -403,8 +405,9 @@ function spawnUpdateRunner(installerPath) {
     try { fs.writeFileSync(logPath, `armed ${new Date().toISOString()} runner=${runnerBat}\n`, 'utf8'); } catch (_) {}
     const oldPid = Number(process.pid) || 0;
     const exePath = process.execPath;
-    // Bake args into a tiny TEMP launcher, then `start /MIN` it so the
-    // update process fully detaches and survives app.exit().
+    // Bake args into a TEMP launcher. Launch via PowerShell Start-Process so
+    // the updater is fully independent of this Electron process — `cmd start`
+    // under windowsHide often never runs (log stuck at "armed").
     const launchBat = path.join(os.tmpdir(), 'knighttrader-run-update.bat');
     const launchBody = [
       '@echo off',
@@ -414,12 +417,16 @@ function spawnUpdateRunner(installerPath) {
       '',
     ].join('\r\n');
     fs.writeFileSync(launchBat, launchBody, 'utf8');
-    const child = spawn(
-      'cmd.exe',
-      ['/d', '/c', 'start', 'KTUpdate', '/MIN', launchBat],
-      { detached: true, stdio: 'ignore', windowsHide: true, cwd: os.tmpdir() },
-    );
-    child.unref();
+    // Start-Process detaches completely — survives Electron app.exit().
+    const ps = [
+      `Add-Content -LiteralPath ${JSON.stringify(logPath)} -Value ('ps-start ' + (Get-Date -Format o))`,
+      `Start-Process -FilePath ${JSON.stringify(launchBat)} -WorkingDirectory ${JSON.stringify(os.tmpdir())} -WindowStyle Hidden`,
+    ].join('; ');
+    execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], {
+      timeout: 20000,
+      windowsHide: true,
+      stdio: 'ignore',
+    });
     appendLog(`🔁 Update runner armed (wait install → relaunch) — log: ${logPath}`, 'info');
   } catch (e) {
     appendLog(`⚠ Update runner failed: ${e?.message || e}`, 'warn');
@@ -490,6 +497,7 @@ let updateInstallInProgress = false;
 
 async function beginSilentUpdateInstall() {
   if (updateInstallInProgress) return;
+  if (IS_POST_UPDATE_LAUNCH) return;
   updateInstallInProgress = true;
   isQuittingForUpdate = true;
   try {
@@ -506,6 +514,8 @@ async function beginSilentUpdateInstall() {
     if (targetVer) {
       try { fs.writeFileSync(path.join(userData, 'kt-pending-version.txt'), targetVer, 'utf8'); } catch (_) {}
     }
+    // Prevent relaunch→quit loops if the runner fails: cooldown before next auto-install.
+    writeUpdateCooldown(15 * 60 * 1000);
 
     await shutdownAllServicesForInstall();
     // Kill other tray/hidden instances so NSIS can replace the exe.
@@ -525,8 +535,8 @@ async function beginSilentUpdateInstall() {
       }
       appendLog(`🔄 Running silent installer → ${getInstallDir()}`, 'info');
       spawnUpdateRunner(runInstaller);
-      // Give the detached runner time to attach before we exit.
-      setTimeout(() => { try { app.exit(0); } catch (_) {} }, 2500).unref?.();
+      // Give PowerShell Start-Process time to detach before we exit.
+      setTimeout(() => { try { app.exit(0); } catch (_) {} }, 5000).unref?.();
       return;
     }
 
@@ -548,7 +558,30 @@ async function waitForDownloadedUpdate(timeoutMs = 180000) {
   return !!(updateDownloadedInfo && installerFileExists());
 }
 
+let skipAutoUpdateUntil = 0;
+
+function writeUpdateCooldown(ms = 15 * 60 * 1000) {
+  skipAutoUpdateUntil = Date.now() + ms;
+  try {
+    fs.writeFileSync(
+      path.join(app.getPath('userData'), 'kt-update-cooldown.txt'),
+      String(skipAutoUpdateUntil),
+      'utf8'
+    );
+  } catch (_) {}
+}
+
+function readUpdateCooldown() {
+  try {
+    const raw = fs.readFileSync(path.join(app.getPath('userData'), 'kt-update-cooldown.txt'), 'utf8').trim();
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > skipAutoUpdateUntil) skipAutoUpdateUntil = n;
+  } catch (_) {}
+  return Date.now() < skipAutoUpdateUntil;
+}
+
 function scheduleAutoInstall(delayMs = AUTO_INSTALL_DELAY_MS) {
+  if (IS_POST_UPDATE_LAUNCH || readUpdateCooldown()) return;
   if (updateInstallInProgress || !updateDownloadedInfo || !installerFileExists()) return;
   if (autoInstallTimer) {
     clearTimeout(autoInstallTimer);
@@ -561,6 +594,7 @@ function scheduleAutoInstall(delayMs = AUTO_INSTALL_DELAY_MS) {
   });
   autoInstallTimer = setTimeout(async () => {
     autoInstallTimer = null;
+    if (IS_POST_UPDATE_LAUNCH || readUpdateCooldown()) return;
     if (!installerFileExists()) {
       runAutoUpdatePipeline().catch(() => {});
       return;
@@ -576,6 +610,7 @@ async function runAutoUpdatePipeline() {
   if (!app.isPackaged || updateInstallInProgress || updateDownloadInProgress || autoUpdatePipelineRunning) {
     return;
   }
+  if (IS_POST_UPDATE_LAUNCH || readUpdateCooldown()) return;
   const current = app.getVersion();
   const remote = pendingRemoteVersion || await resolveLatestRemoteVersion();
   if (!remote || compareVersions(current, remote) >= 0) return;
@@ -4325,6 +4360,7 @@ function forceKillExistingInstance() {
   }
   if (IS_POST_UPDATE_LAUNCH) {
     clearPendingUpdateMarkers();
+    writeUpdateCooldown(15 * 60 * 1000);
   }
   try { fs.writeFileSync(PID_FILE, String(process.pid)); } catch (_) {}
 }
@@ -4531,6 +4567,7 @@ app.whenReady().then(async () => {
   if (IS_POST_UPDATE_LAUNCH) {
     appendLog(`✅ Updated to v${app.getVersion()} — app relaunched successfully.`, 'success');
     clearPendingUpdateMarkers();
+    writeUpdateCooldown(15 * 60 * 1000);
   } else {
     reportStuckUpdateIfNeeded();
   }
@@ -4553,14 +4590,20 @@ app.whenReady().then(async () => {
       appendLog(`ℹ VPN location check: ${e.message}`, 'info');
     });
   }, 4000);
-  checkForUpdatesFromMain().then(() => {
-    if (updateDownloadedInfo && installerFileExists()) {
-      broadcastUpdate('update-downloaded', {
-        version: updateDownloadedInfo.version || app.getVersion(),
-      });
-      scheduleAutoInstall(5000);
-    }
-  }).catch(() => {});
+  // Never auto-quit for updates right after a post-update relaunch — that
+  // caused "opens then closes" when the installer runner failed.
+  if (!IS_POST_UPDATE_LAUNCH && !readUpdateCooldown()) {
+    checkForUpdatesFromMain().then(() => {
+      if (updateDownloadedInfo && installerFileExists()) {
+        broadcastUpdate('update-downloaded', {
+          version: updateDownloadedInfo.version || app.getVersion(),
+        });
+        scheduleAutoInstall(15000);
+      }
+    }).catch(() => {});
+  } else {
+    appendLog('ℹ Skipping auto-update check (post-update / cooldown)', 'info');
+  }
 
   // Check every minute — auto-download + auto-restart when a release is available.
   setInterval(() => { checkForUpdatesFromMain().catch(() => {}); }, UPDATE_CHECK_INTERVAL_MS).unref?.();

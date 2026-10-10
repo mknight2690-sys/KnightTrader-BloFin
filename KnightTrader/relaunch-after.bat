@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-REM Started by the NSIS installer. Waits until setup exits, then launches the app.
+REM NSIS backup relaunch — only if the app is not already running.
 set "INSTDIR=%~1"
 if "%INSTDIR%"=="" set "INSTDIR=%~dp0"
 if not "%INSTDIR:~-1%"=="\" set "INSTDIR=%INSTDIR%\"
@@ -17,7 +17,12 @@ if errorlevel 1 goto launch
 timeout /t 2 /nobreak >nul
 goto waitsetup
 :launch
-timeout /t 3 /nobreak >nul
+timeout /t 5 /nobreak >nul
+tasklist /FI "IMAGENAME eq %EXE_NAME%" 2>nul | find /I "%EXE_NAME%" >nul
+if !ERRORLEVEL!==0 (
+  >>"%LOG%" echo relaunch-after skip — app already running
+  exit /b 0
+)
 if not exist "%EXE%" if exist "%LOCALAPPDATA%\Programs\KnightTrader\%EXE_NAME%" (
   set "EXE=%LOCALAPPDATA%\Programs\KnightTrader\%EXE_NAME%"
   set "INSTDIR=%LOCALAPPDATA%\Programs\KnightTrader\"
@@ -26,20 +31,10 @@ if not exist "%EXE%" if exist "%LOCALAPPDATA%\Programs\KnightTrader Blofin\%EXE_
   set "EXE=%LOCALAPPDATA%\Programs\KnightTrader Blofin\%EXE_NAME%"
   set "INSTDIR=%LOCALAPPDATA%\Programs\KnightTrader Blofin\"
 )
-if not exist "%EXE%" (
-  for /f "delims=" %%P in ('dir /s /b "%LOCALAPPDATA%\Programs\%EXE_NAME%" 2^>nul') do (
-    set "EXE=%%P"
-    for %%I in ("%%P") do set "INSTDIR=%%~dpI"
-    goto have_exe
-  )
-)
-:have_exe
 if exist "!EXE!" (
   >>"%LOG%" echo relaunch-after Start-Process !EXE!
   powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '!EXE!' -ArgumentList '--updated' -WorkingDirectory '!INSTDIR!'" >>"%LOG%" 2>&1
-  timeout /t 2 /nobreak >nul
-  start "" /D "!INSTDIR!" "!EXE!" --updated
 ) else (
-  >>"%LOG%" echo relaunch-after missing exe %EXE%
+  >>"%LOG%" echo relaunch-after missing exe
 )
 exit /b 0
