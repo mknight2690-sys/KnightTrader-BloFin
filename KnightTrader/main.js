@@ -1017,7 +1017,7 @@ const DEFAULTS = {
   blofinAccount: { email: '' },
   proton: { email: '', password: '' },
   nous:   { apiKey: '', model: DEFAULT_NOUS_MODEL },
-  settings: { notifySounds: true },
+  settings: { notifySounds: true, autoStartHermes: true },
   onboarding: {
     firstRunComplete: false,
     vpnVerified: false,
@@ -1066,6 +1066,7 @@ function migrateStoreData(raw) {
   delete merged.nouse;
   merged.proton = { ...DEFAULTS.proton, ...(merged.proton || {}) };
   merged.blofinAccount = { ...DEFAULTS.blofinAccount, ...(merged.blofinAccount || {}) };
+  merged.settings = { ...DEFAULTS.settings, ...(merged.settings || {}) };
   merged.onboarding = {
     ...DEFAULTS.onboarding,
     ...(merged.onboarding || {}),
@@ -2854,6 +2855,58 @@ function signalDashboardReady(status) {
     url: baseUrl,
     gatewayRunning: !!status?.gateway_running,
   });
+}
+
+function isHermesAutostartEnabled() {
+  // Default ON — only an explicit false disables it.
+  return storeData?.settings?.autoStartHermes !== false;
+}
+
+/**
+ * Start dashboard + gateway from the main process so it does not depend on
+ * the renderer finishing init (overlays / tab switches used to skip it).
+ */
+async function autoStartHermesServices(reason = 'startup') {
+  if (!isHermesAutostartEnabled()) {
+    return { ok: false, reason: 'disabled' };
+  }
+  if (isQuittingForUpdate || userRequestedQuit) {
+    return { ok: false, reason: 'quitting' };
+  }
+  const installStatus = checkHermesInstalled();
+  if (!installStatus.installed) {
+    return { ok: false, reason: 'not-installed' };
+  }
+
+  try {
+    const status = await getDashboardStatus();
+    if (status.ready && status.gatewayRunning) {
+      return { ok: true, already: true, url: status.url };
+    }
+    appendLog(`🚀 Auto-starting Hermes dashboard + gateway (${reason})…`, 'info');
+    const started = await startHermesDashboard();
+    if (started?.ok) {
+      appendLog('✅ Hermes dashboard + gateway auto-started', 'success');
+    } else {
+      appendLog(`⚠ Hermes auto-start: ${started?.msg || started?.error || 'not ready'}`, 'warn');
+    }
+    return started;
+  } catch (e) {
+    appendLog(`⚠ Hermes auto-start failed: ${e.message}`, 'warn');
+    return { ok: false, error: e.message };
+  }
+}
+
+let hermesAutostartWatchTimer = null;
+
+function startHermesAutostartWatcher() {
+  if (hermesAutostartWatchTimer) return;
+  hermesAutostartWatchTimer = setInterval(() => {
+    if (!isHermesAutostartEnabled() || isQuittingForUpdate || userRequestedQuit) return;
+    autoStartHermesServices('watchdog').catch(() => {});
+  }, 45 * 1000);
+  hermesAutostartWatchTimer.unref?.();
+  appendLog('👁 Hermes autostart watchdog on (every 45s)', 'info');
 }
 
 async function stopHermesDashboard() {
@@ -4679,6 +4732,12 @@ app.whenReady().then(async () => {
   syncHermesCredentials(null).catch((e) => {
     appendLog(`ℹ Hermes credential sync deferred: ${e.message}`, 'info');
   });
+  // Persist Hermes dashboard + gateway across app restarts (main-process,
+  // not renderer). Retries via watchdog if first attempt races install/VPN.
+  setTimeout(() => {
+    autoStartHermesServices('app-ready').catch(() => {});
+  }, 2500);
+  startHermesAutostartWatcher();
   const bhRoot = getBlohunterBridge().getConnectRoot();
   if (bhRoot) appendLog(`📈 BloHunter Connect: ${bhRoot}`, 'info');
   else appendLog('⚠ BloHunter Connect not found — Trading tab needs Downloads\\blohunter-connect', 'warn');

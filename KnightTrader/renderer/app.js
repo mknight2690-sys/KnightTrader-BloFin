@@ -237,13 +237,22 @@ async function init() {
     }
   } catch (e) {}
 
-  // Auto-connect Hermes dashboard + gateway on app startup (not only when
-  // the user clicks into the Hermes tab). Previously this only fired from
-  // switchTab('hermes'), so the user had to visit the tab + scroll to get
-  // the gateway running before cron could fire.
-  if (hermesInstalled && !dashboardRunning && !dashboardStartInFlight) {
-    appendLog('🚀 Auto-starting Hermes dashboard + gateway on startup…', 'info');
-    startHermesDashboardUi();
+  // Renderer-side kick (main process also auto-starts + watches every 45s).
+  // Start when Hermes is installed and dashboard/gateway is not fully ready —
+  // including the case where a stale listener is up but gateway is down.
+  if (hermesInstalled && !dashboardStartInFlight) {
+    try {
+      const again = await window.kt.getDashboardStatus();
+      if (!(again?.ready && again?.gatewayRunning)) {
+        appendLog('🚀 Auto-starting Hermes dashboard + gateway on startup…', 'info');
+        startHermesDashboardUi();
+      }
+    } catch (_) {
+      if (!dashboardRunning) {
+        appendLog('🚀 Auto-starting Hermes dashboard + gateway on startup…', 'info');
+        startHermesDashboardUi();
+      }
+    }
   }
 
   // Live events
