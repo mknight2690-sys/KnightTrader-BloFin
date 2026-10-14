@@ -52,6 +52,7 @@ if not "%OLD_PID%"=="" if not "%OLD_PID%"=="0" (
 >>"%LOG%" echo killing leftover app / hermes
 taskkill /F /IM "%EXE_NAME%" /T >nul 2>&1
 taskkill /F /IM "hermes.exe" /T >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "for($i=0;$i -lt 3;$i++){ Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and ((($_.ExecutablePath + ' ' + $_.CommandLine) -like '*Programs\KnightTrader*') -or (($_.ExecutablePath + ' ' + $_.CommandLine) -like '*knight-trader\hermes*')) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 1500 }" >nul 2>&1
 timeout /t 3 /nobreak >nul
 
 REM Never pass /D= — spaces break NSIS argv splitting.
@@ -59,6 +60,20 @@ REM Never pass /D= — spaces break NSIS argv splitting.
 start /wait "" "%INSTALLER%" /S /CURRENTUSER
 set "RC=!ERRORLEVEL!"
 >>"%LOG%" echo installer exit code !RC!
+set /a _try=0
+:retry_install
+if not "!RC!"=="0" if !_try! LSS 2 (
+  set /a _try+=1
+  >>"%LOG%" echo installer failed rc=!RC! - force-killing app tree and retrying !_try!
+taskkill /F /IM "%EXE_NAME%" /T >nul 2>&1
+taskkill /F /IM "hermes.exe" /T >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "for($i=0;$i -lt 3;$i++){ Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and ((($_.ExecutablePath + ' ' + $_.CommandLine) -like '*Programs\KnightTrader*') -or (($_.ExecutablePath + ' ' + $_.CommandLine) -like '*knight-trader\hermes*')) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 1500 }" >nul 2>&1
+  timeout /t 3 /nobreak >nul
+  start /wait "" "%INSTALLER%" /S /CURRENTUSER
+  set "RC=!ERRORLEVEL!"
+  >>"%LOG%" echo retry installer exit code !RC!
+  goto retry_install
+)
 
 timeout /t 4 /nobreak >nul
 

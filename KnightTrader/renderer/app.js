@@ -160,17 +160,15 @@ async function init() {
     forceTradingTabOnReady = true;
     startupAutoSwitchArmed = true;
     didStartupAutoSwitch = false;
+    // v1.2.58: no 'Welcome back / connecting VPN' screen; go straight to the main UI.
     const overlay = document.getElementById('returning-user-overlay');
-    overlay?.classList.remove('hidden');
+    overlay?.classList.add('hidden');
     try { window.kt.announceVoice('Welcome back to Knight Trader Blo Fin.'); } catch (_) {}
     appendLogLine({ ts: Date.now(), type: 'info', msg: '⏳ Returning user startup — VPN check + Hermes…' });
-    try {
-      const res = await window.kt.vpnEnsureRoute({ preferredCountry: 'random' });
-      if (res?.allowed) window.refreshVpnTabStatus?.(true);
-    } catch (_) {}
     if (hermesInstalled && !dashboardRunning && !dashboardStartInFlight) {
       startHermesDashboardUi();
     }
+    try { switchTab('trading'); } catch (_) {}
     setTimeout(() => {
       if (currentTab === 'hermes' || forceTradingTabOnReady) {
         overlay?.classList.add('hidden');

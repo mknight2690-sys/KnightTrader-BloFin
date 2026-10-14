@@ -4796,7 +4796,7 @@ app.whenReady().then(async () => {
   else appendLog('⚠ BloHunter Connect not found — Trading tab needs Downloads\\blohunter-connect', 'warn');
   startBlohunterHotReloadWatcher();
   setTimeout(() => {
-    getVpnOnboarding().checkLocation().catch((e) => {
+    if (false) getVpnOnboarding().checkLocation().catch((e) => { // v1.2.58: no VPN step at startup
       appendLog(`ℹ VPN location check: ${e.message}`, 'info');
     });
   }, 4000);

@@ -71,6 +71,8 @@
   }
 
   function showWaitOverlay(payload = {}) {
+    // v1.2.58: startup VPN wait screen removed.
+    return;
     if (!el.waitOverlay) return;
     el.waitOverlay.classList.remove('hidden');
     if (payload.title && el.waitTitle) el.waitTitle.textContent = payload.title;
