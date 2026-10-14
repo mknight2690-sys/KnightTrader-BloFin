@@ -930,7 +930,9 @@ function startBlohunterHotReloadWatcher() {
 }
 
 const NOUS_INFERENCE_URL = 'https://inference-api.nousresearch.com/v1/chat/completions';
-const NOUS_INFERENCE_BASE = 'https://inference-api.nousresearch.com/v1';
+const NOUS_DIRECT_BASE = 'https://inference-api.nousresearch.com/v1';
+// Autoselector is the ONLY inference provider: Hermes chat + crons point here.
+const autoselector = require('./autoselector');
 const NOUS_RECOMMENDED_MODELS_URL = 'https://portal.nousresearch.com/api/nous/recommended-models';
 const DASHBOARD_PORT = 9119;
 const DASHBOARD_PORT_CANDIDATES = [DASHBOARD_PORT, 9120, 9121, 9122];
@@ -1667,7 +1669,7 @@ function syncHermesConfig() {
   const configSets = [
     ['model.provider', 'custom'],
     ['model.default', model],
-    ['model.base_url', NOUS_INFERENCE_BASE],
+    ['model.base_url', autoselector.baseUrl()],
     ['model.api_key', '${NOUS_API_KEY}'],
   ];
 
@@ -3169,7 +3171,7 @@ async function configureCron() {
     // Use custom + Nous inference URL — sk-nous API keys work here.
     // provider:nous requires OAuth device login, not a portal API key.
     provider: 'custom',
-    base_url: NOUS_INFERENCE_BASE,
+    base_url: autoselector.baseUrl(),
     model: storeData.nous?.model || DEFAULT_NOUS_MODEL,
     deliver: 'local',
     prompt,
@@ -3531,7 +3533,7 @@ function pingNousModel(apiKey, model, timeoutMs = 25000) {
 async function getFreeModelCandidates() {
   const catalog = await fetchNousModelCatalog();
   const free = Array.isArray(catalog?.free) ? catalog.free.filter((m) => m?.id) : [];
-  return free.length ? free : FALLBACK_FREE_NOUS_MODELS;
+  return (free.length ? free : FALLBACK_FREE_NOUS_MODELS).filter((m) => !autoselector.isBlacklisted(m.id));
 }
 
 /**
@@ -3811,7 +3813,8 @@ async function updateCronModelOnly(model) {
   // Only PUT jobs whose model field differs — still covers ALL crons that need sync.
   const stale = jobs.filter((job) => {
     const jobModel = normalizeNousModel(job.model || job.spec?.model || '');
-    return jobModel !== mdl;
+    const jobBase = String(job.base_url || job.spec?.base_url || '');
+    return jobModel !== mdl || jobBase !== autoselector.baseUrl();
   });
   if (!stale.length) {
     return { ok: true, model: mdl, updated: 0, total: jobs.length, skipped: true };
@@ -3823,7 +3826,7 @@ async function updateCronModelOnly(model) {
     const existingPrompt = job.prompt || job.spec?.prompt || null;
     const updates = {
       provider: 'custom',
-      base_url: NOUS_INFERENCE_BASE,
+      base_url: autoselector.baseUrl(),
       model: mdl,
     };
     if (job.name) updates.name = job.name;
@@ -4693,6 +4696,16 @@ app.whenReady().then(async () => {
   attachBhProtocol(session.fromPartition('persist:blohunter-trading'));
 
   registerIPC();
+  try {
+    await autoselector.start({
+      getPrimaryKey: () => resolveNousApiKey(),
+      getStoreKeys: () => (Array.isArray(storeData.nous?.apiKeys) ? storeData.nous.apiKeys : []),
+      getModels: () => getFreeModelCandidates(),
+      getDefaultModel: () => storeData.nous?.model || DEFAULT_NOUS_MODEL,
+      log: (m, lvl) => appendLog(m, lvl || 'info'),
+    });
+    syncHermesConfig();
+  } catch (e) { appendLog(`Autoselector start failed: ${e.message}`, 'warn'); }
   const appIcon = loadAppIcon();
   if (!appIcon.isEmpty()) {
     if (process.platform === 'win32') {
