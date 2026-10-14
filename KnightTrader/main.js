@@ -1,3 +1,22 @@
+// KT_HIDE_CHILD_WINDOWS (v1.2.59): every child process defaults to windowsHide:true
+// so no cmd/powershell console window ever pops up on Windows.
+(() => {
+  const cp = require('child_process');
+  const wrap = (name, optIdx) => {
+    const orig = cp[name];
+    if (typeof orig !== 'function') return;
+    cp[name] = function (...args) {
+      let i = optIdx;
+      if (name === 'spawn' || name === 'execFile' || name === 'execFileSync' || name === 'spawnSync') {
+        i = Array.isArray(args[1]) ? 2 : 1;
+      }
+      if (args[i] == null || typeof args[i] === 'function') args.splice(i, 0, {});
+      if (typeof args[i] === 'object' && args[i].windowsHide === undefined) args[i] = { ...args[i], windowsHide: true };
+      return orig.apply(this, args);
+    };
+  };
+  for (const n of ['exec', 'execSync', 'execFile', 'execFileSync', 'spawn', 'spawnSync']) wrap(n, 1);
+})();
 const { app, BrowserWindow, BrowserView, ipcMain, shell, dialog, protocol, webContents, session, Tray, nativeImage, Menu, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
