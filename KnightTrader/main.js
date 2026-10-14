@@ -507,6 +507,15 @@ function killHermesChildProcesses() {
     execSync('taskkill /F /IM "hermes.exe" /T', { timeout: 10000, stdio: 'ignore', windowsHide: true });
   } catch (_) {}
 }
+// Also kill orphaned Hermes venv python/node processes so the updater can
+// delete old files (fixes "failed to uninstall old files").
+function killHermesVenvProcesses() {
+  if (process.platform !== 'win32') return;
+  try {
+    execSync(`powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne ${process.pid} -and (($_.ExecutablePath + ' ' + $_.CommandLine) -like '*knight-trader\\hermes*') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"`,
+      { timeout: 20000, stdio: 'ignore', windowsHide: true });
+  } catch (_) {}
+}
 
 async function shutdownAllServicesForInstall() {
   const tasks = [
@@ -518,7 +527,7 @@ async function shutdownAllServicesForInstall() {
     Promise.all(tasks),
     new Promise((resolve) => setTimeout(resolve, 8000)),
   ]);
-  killHermesChildProcesses();
+  killHermesChildProcesses(); killHermesVenvProcesses();
 }
 
 let updateInstallInProgress = false;
@@ -2990,9 +2999,21 @@ function readCronPromptFile() {
   return null;
 }
 
+const POSITION_SIZING_RULES = `
+
+=== POSITION SIZING (app rule, overrides any fixed USDT margin cap such as "<=1.5 USDT") ===
+- There is NO fixed USDT margin cap. For EACH trade YOU choose margin_pct = percent of current account equity to commit as margin, based on: signal confidence, volatility (ATR %), R:R, and current open exposure (sum of margin already in open positions).
+- Pass it to place_order(..., margin_pct=<number>, reasoning="<one line: confidence / volatility / R:R / exposure>"). The client computes size from equity, contractValue and lotSize.
+- HARD LIMITS enforced in code: margin_pct is clamped to a maximum of 10% per trade; size is floored at the exchange minimum order size. Never compute or pass a raw size yourself.
+- Log margin_pct and its reasoning in the lessons file with each trade. All other risk rules (isolated margin, leverage, attached TP/SL, R:R gates, HOLD discipline) are unchanged.`;
+
 function buildCronPrompt() {
   const fromFile = readCronPromptFile();
-  if (fromFile) return fromFile;
+  if (fromFile) return fromFile + POSITION_SIZING_RULES;
+  return buildCronPromptBuiltin() + POSITION_SIZING_RULES;
+}
+
+function buildCronPromptBuiltin() {
 
   const compPath = getCompendiumPath();
   const isDemo = !!storeData.blofin?.demoMode;
@@ -3073,7 +3094,26 @@ class CF:
     def set_leverage(self,inst,lev,mm="isolated",side="long"):
         b=json.dumps({"instId":inst,"leverage":str(lev),"marginMode":mm,"positionSide":side,"brokerId":BROKER_ID})
         return self.call("POST","/api/v1/account/set-leverage",body=b)
-    def place_order(self,inst,side,pside,otype,price,size,tp,sl,mm="isolated"):
+    def instrument(self,inst):
+        d=self.call("GET","/api/v1/market/instruments","instId="+inst)
+        return (d.get("data") or [{}])[0] if isinstance(d,dict) else {}
+    def equity(self):
+        d=self.balance(); dd=(d.get("data") or {}) if isinstance(d,dict) else {}
+        return float(dd.get("totalEquity") or 0)
+    def size_from_margin_pct(self,inst,price,lev,margin_pct):
+        # HARD RULE (enforced in code): margin per trade <= 10% of account equity; floor = exchange min order.
+        MAX_MARGIN_PCT=10.0
+        pct=max(0.0,min(float(margin_pct),MAX_MARGIN_PCT))
+        eq=self.equity(); spec=self.instrument(inst)
+        ct=float(spec.get("contractValue") or 1); lot=float(spec.get("lotSize") or spec.get("minSize") or 1); mn=float(spec.get("minSize") or lot)
+        margin=eq*pct/100.0
+        raw=margin*float(lev)/(float(price)*ct)
+        size=max(mn,(raw//lot)*lot)
+        return round(size,8),{"equity":eq,"margin_pct_used":pct,"margin_usdt":round(size*float(price)*ct/float(lev),4),"min_size":mn}
+    def place_order(self,inst,side,pside,otype,price,tp,sl,margin_pct,reasoning,lev=5,mm="isolated"):
+        if not str(reasoning or "").strip(): raise ValueError("margin_pct reasoning required")
+        size,info=self.size_from_margin_pct(inst,price,lev,margin_pct)
+        print("SIZING", json.dumps({"inst":inst,"margin_pct_requested":margin_pct,**info,"size":size,"reasoning":reasoning}))
         b=json.dumps({"instId":inst,"marginMode":mm,"side":side,"positionSide":pside,
             "orderType":otype,"price":str(price),"size":str(size),
             "tpTriggerPrice":str(tp),"tpOrderPrice":str(tp),"tpTriggerPriceType":"last",
@@ -3110,7 +3150,7 @@ ENDPOINT MAP + GOTCHAS
 - POSITIONS field name is \`positions\` (open size), NOT \`total\`; available is \`availablePositions\`. A filter on the wrong field falsely shows "no position."
 - BloFin has NO standalone trigger/stop orderType (152002). Use ONLY attached tp/sl at placement. A manual limit-below-market FILLS INSTANTLY (not a stop) — never do it. Emergency close = market order reduceOnly.
 - Verify a placed order via orders-tpsl-pending (state:'live') or orders-history; orders-pending stays empty even with tp/sl attached (expected).
-- Min size per instrument differs (BTC min 0.1 contract ≈ $1.26 margin at 5x). Size so margin <= ~1.5 USDT at this account size. "Insufficient margin" (103003) = size too big, not a sign error.
+- Min size per instrument differs (BTC min 0.1 contract ≈ $1.26 margin at 5x). Size via margin_pct (see POSITION SIZING) - code clamps to <=10% of equity and floors at the exchange min size. "Insufficient margin" (103003) = size too big, not a sign error.
 
 TRADING STRATEGY (your edge — apply every tick)
 Scan the FULL universe for candidate flags; deep-dive the liquid top ~40 by 24h volume with this multi-timeframe gate (resample 1m→5m/15m/1h; compute RSI(14), EMA20, ATR(14), volume ratio = last-bar vol / 20-bar SMA). Take a trade ONLY when a gate FULLY fires; otherwise HOLD.
@@ -3134,7 +3174,7 @@ MENTAL TRADING — mentally trade new strategies always to stay with best strate
 1) Write/import the client above. Prove pipe: public tickers (code0, 490 syms) → signed balance (real equity) → positions/tpsl (code0). If 403 HTML → you used curl/curl_cffi; switch the client to Camoufox.
 2) Read lessons file; apply prior rules.
 3) Scan: tickers → liquid top ~40 by 24h vol → fetch+candles (paginated 1m, resample) → apply gates.
-4) If a gate FULLY fires with R:R>=2.5 and volume confirmation: set_leverage → place_order (isolated, attached TP/SL), then verify it is live via tpsl-pending. Size <=1.5 USDT margin. Else HOLD.
+4) If a gate FULLY fires with R:R>=2.5 and volume confirmation: set_leverage → place_order (isolated, attached TP/SL), then verify it is live via tpsl-pending. Size with margin_pct (POSITION SIZING). Else HOLD.
 5) Mental-trade log for the universe — invent/test NEW strategies every tick (especially on zero balance).
 6) Manage/monitor any open positions (attached TP/SL does the exiting; only tighten SL to breakeven or cut if structure breaks).
 7) Append this tick's decision + mental-trade log + any new rule to the lessons file. Keep the equity curve vertical.`;
@@ -4834,7 +4874,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   try { blohunterBridge?.storage?.flushSync(); } catch (_) {}
   if (!isQuittingForUpdate) return;
-  try { killHermesChildProcesses(); } catch (_) {}
+  try { killHermesChildProcesses(); killHermesVenvProcesses(); } catch (_) {}
   for (const w of BrowserWindow.getAllWindows()) {
     try { if (!w.isDestroyed()) w.destroy(); } catch (_) {}
   }
